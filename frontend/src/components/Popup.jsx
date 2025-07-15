@@ -26,10 +26,15 @@ const Popup = () => {
   };
 
   useEffect(() => {
-    const fetchTranscript = async () => {
-      const transcript = await getTranscript("pUJTx5JpiHw");
+    chrome.storage.sync.get(["videoId"], (result) => {
+      console.log({ result });
+    });
+  }, []);
 
-      console.log({ transcript });
+  useEffect(() => {
+    const fetchTranscript = async () => {
+      // const transcript = await getTranscript("pUJTx5JpiHw");
+      // console.log({ transcript });
     };
 
     fetchTranscript();
