@@ -22,7 +22,7 @@ if not GOOGLE_API_KEY:
     raise ValueError("GOOGLE_API_KEY not found in environment variables")
 
 genai.configure(api_key=GOOGLE_API_KEY)
-translator = GoogleTranslator(source='auto', target='en')  # Changed source to 'auto' for flexibility
+translator = GoogleTranslator(source='auto', target='en')
 
 ytt_api = YouTubeTranscriptApi()
 
@@ -39,31 +39,99 @@ text_splitter = RecursiveCharacterTextSplitter(
     length_function=len,
 )
 
+# Initialize Gemini embeddings for semantic search
+embeddings = GoogleGenerativeAIEmbeddings(
+    model="models/embedding-001",
+    google_api_key=GOOGLE_API_KEY,
+)
+
+# Connect to existing Qdrant collection
+retrieval = QdrantVectorStore.from_existing_collection(
+    url="http://localhost:6333",
+    collection_name="yt-rag",
+    embedding=embeddings,
+)
+
+def get_relevant_transcript_chunks(query: str):
+    """
+    Retrieve semantically relevant chunks of the video transcript based on the query.
+    """
+    return retrieval.similarity_search(query=query)
+
+def get_ai_response(query: str, chunks):
+    """
+    Get AI response based on the query and relevant transcript chunks using Gemini.
+    Provides a summarized response with timestamps.
+    """
+    # Configure the model
+    model = genai.GenerativeModel('gemini-2.5-pro')
+    
+    # Format chunks to include translated text and timestamps
+    formatted_chunks = []
+    for chunk in chunks:
+        timestamp = chunk.metadata.get('start_time', 0)
+        duration = chunk.metadata.get('duration', 0)
+        translated_text = chunk.page_content
+        
+        formatted_chunks.append(f"""
+        [Timestamp: {timestamp}s, Duration: {duration}s]
+        Content: {translated_text}
+        """)
+    
+    system_prompt = f"""
+    You are an expert content analyzer who helps users understand video content. Your responses should:
+
+    1. ANALYSIS:
+    - Provide clear, concise summaries of relevant video segments
+    - Focus only on information directly related to the question
+    - Include timestamps for each key point
+    - Maintain a logical flow of information
+
+    2. COMMUNICATION:
+    - Be brief but informative
+    - Use bullet points for clarity when appropriate
+    - Provide direct answers
+    - Include timestamps for reference
+
+    Available Context:
+    {formatted_chunks}
+
+    This Context contains transcript segments with timestamps. Your response should:
+    1. Directly answer the user's question
+    2. Reference specific timestamps for key points
+    3. Provide a concise summary of relevant information
+    4. Focus on the most important details
+    5. Use clear formatting with timestamps
+
+    Format your response as:
+    [Timestamp: Xs]
+    Key Point/Summary
+    
+    [Timestamp: Ys]
+    Next Key Point/Summary
+    
+    Brief conclusion if needed...
+
+    User Question: {query}
+    """
+
+    # Generate response
+    response = model.generate_content(system_prompt)
+    return response.text
+
 def detect_and_translate(text: str) -> tuple[str, str]:
     """
     Detect language and translate to English if Hindi
-    
-    Args:
-        text (str): Text to analyze and potentially translate
-        
-    Returns:
-        tuple[str, str]: (processed_text, detected_language)
     """
     try:
-        # Detect language
         detected_lang = detect(text)
-        
-        # If Hindi, translate to English
         if detected_lang == 'hi':
             try:
                 return translator.translate(text), detected_lang
             except Exception as e:
                 print(f"Translation error: {e}")
                 return text, detected_lang
-        
-        # If already English or other language, return as is
         return text, detected_lang
-        
     except Exception as e:
         print(f"Language detection error: {e}")
         return text, 'unknown'
@@ -130,12 +198,6 @@ def get_transcript_safely(video_id, languages):
         
         print("split_docs: ", split_docs)
         
-        # Initialize Gemini embeddings
-        embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/embedding-001",  # Gemini's embedding model
-            google_api_key=GOOGLE_API_KEY,
-        )
-        
         # Initialize vector store with Gemini embeddings
         vector_store = QdrantVectorStore.from_documents(
             documents=[],
@@ -174,6 +236,41 @@ def get_transcript():
     
     return jsonify(result)
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True, port=5001)
+@app.route('/api/query', methods=['POST'])
+def query_transcript():
+    try:
+        data = request.get_json()
+        if not data or 'query' not in data:
+            return jsonify({
+                "success": False,
+                "error": "Missing query in request body"
+            }), 400
+
+        user_query = data['query']
+        
+        # Get relevant chunks
+        relevant_chunks = get_relevant_transcript_chunks(user_query)
+        
+        # Get AI response
+        response = get_ai_response(user_query, relevant_chunks)
+        
+        return jsonify({
+            "success": True,
+            "response": response,
+            "chunks": [
+                {
+                    "text": chunk.page_content,
+                    "metadata": chunk.metadata
+                } for chunk in relevant_chunks
+            ]
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5001, debug=True) 
     
