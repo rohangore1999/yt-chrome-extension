@@ -12,6 +12,9 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 import sys
+from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.models import Distance, VectorParams
 
 # Load environment variables
 load_dotenv()
@@ -23,19 +26,53 @@ if not GOOGLE_API_KEY:
 
 genai.configure(api_key=GOOGLE_API_KEY)
 translator = GoogleTranslator(source='auto', target='en')
-
 ytt_api = YouTubeTranscriptApi()
+
+# Initialize Qdrant client
+qdrant_client = QdrantClient(url="http://localhost:6333")
+
+def ensure_collection_exists(collection_name: str, embedding_size: int = 768):
+    """
+    Ensures that the Qdrant collection exists, creates it if it doesn't.
+    """
+    try:
+        # Try to get collection info
+        collection_info = qdrant_client.get_collection(collection_name)
+        print(f"Collection {collection_name} exists")
+        return True
+    except UnexpectedResponse as e:
+        if "doesn't exist" in str(e):
+            try:
+                # Create collection if it doesn't exist
+                qdrant_client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=VectorParams(
+                        size=embedding_size,
+                        distance=Distance.COSINE
+                    )
+                )
+                print(f"Successfully created collection: {collection_name}")
+                return True
+            except Exception as create_error:
+                print(f"Failed to create collection: {str(create_error)}")
+                return False
+        else:
+            print(f"Unexpected response from Qdrant: {str(e)}")
+            return False
+    except Exception as e:
+        print(f"Error checking/creating collection: {str(e)}")
+        return False
 
 # Set console encoding to UTF-8
 sys.stdout.reconfigure(encoding='utf-8')
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
-# Initialize text splitter
+# Initialize text splitter with optimized settings for sliding window
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=200,
+    chunk_size=2500,  # Increased for better context
+    chunk_overlap=625,  # 25% overlap for continuity
     length_function=len,
 )
 
@@ -45,25 +82,52 @@ embeddings = GoogleGenerativeAIEmbeddings(
     google_api_key=GOOGLE_API_KEY,
 )
 
-# Connect to existing Qdrant collection
-retrieval = QdrantVectorStore.from_existing_collection(
-    url="http://localhost:6333",
-    collection_name="yt-rag",
-    embedding=embeddings,
-)
+def get_vector_store():
+    """
+    Get or create vector store for the collection.
+    """
+    try:
+        # Try to ensure collection exists
+        if not ensure_collection_exists("yt-rag"):
+            raise Exception("Failed to create or verify collection")
+        
+        # Initialize vector store
+        return QdrantVectorStore(
+            client=qdrant_client,
+            collection_name="yt-rag",
+            embedding=embeddings,
+        )
+    except Exception as e:
+        print(f"Error in get_vector_store: {str(e)}")
+        raise
 
 def get_relevant_transcript_chunks(query: str):
     """
     Retrieve semantically relevant chunks of the video transcript based on the query.
     """
-    return retrieval.similarity_search(query=query)
+    try:
+        vector_store = get_vector_store()
+        return vector_store.similarity_search(query=query)
+    except Exception as e:
+        print(f"Error during similarity search: {e}")
+        return []
+
+def format_timestamp(seconds):
+    """
+    Format timestamp into clickable format with hours, minutes, and seconds
+    """
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
 
 def get_ai_response(query: str, chunks):
     """
     Get AI response based on the query and relevant transcript chunks using Gemini.
-    Provides a summarized response with timestamps.
     """
-    # Configure the model
     model = genai.GenerativeModel('gemini-2.5-pro')
     
     # Format chunks to include translated text and timestamps
@@ -74,82 +138,141 @@ def get_ai_response(query: str, chunks):
         translated_text = chunk.page_content
         
         formatted_chunks.append(f"""
-        [Timestamp: {timestamp}s, Duration: {duration}s]
+        [{format_timestamp(timestamp)}]
         Content: {translated_text}
         """)
     
     system_prompt = f"""
-    You are an expert content analyzer who helps users understand video content. Your responses should:
-
-    1. ANALYSIS:
-    - Provide clear, concise summaries of relevant video segments
-    - Focus only on information directly related to the question
-    - Include timestamps for each key point
-    - Maintain a logical flow of information
-
-    2. COMMUNICATION:
-    - Be brief but informative
-    - Use bullet points for clarity when appropriate
-    - Provide direct answers
-    - Include timestamps for reference
-
+    You are an expert content analyzer who helps users understand video content.
+    
+    When responding:
+    1. Structure your response with clear sections (e.g., ### Overview, ### Details)
+    2. Use bullet points for clarity
+    3. ALWAYS include timestamps in [MM:SS] format at the end of each point
+    4. Keep responses concise and focused
+    5. Format timestamps consistently as [MM:SS] or [HH:MM:SS] for longer videos
+    6. Place timestamps at the end of each statement in parentheses
+    
     Available Context:
     {formatted_chunks}
 
-    This Context contains transcript segments with timestamps. Your response should:
-    1. Directly answer the user's question
-    2. Reference specific timestamps for key points
-    3. Provide a concise summary of relevant information
-    4. Focus on the most important details
-    5. Use clear formatting with timestamps
-
-    Format your response as:
-    [Timestamp: Xs]
-    Key Point/Summary
-    
-    [Timestamp: Ys]
-    Next Key Point/Summary
-    
-    Brief conclusion if needed...
-
     User Question: {query}
+    
+    Format each point as:
+    * Statement or point (MM:SS)
     """
 
-    # Generate response
     response = model.generate_content(system_prompt)
-    return response.text
+    
+    # Process response to make timestamps clickable
+    processed_response = response.text
+    
+    # Return structured response
+    return {
+        "content": processed_response,
+        "timestamps": [
+            {
+                "time": format_timestamp(chunk.metadata.get('start_time', 0)),
+                "text": chunk.page_content[:100] + "..." if len(chunk.page_content) > 100 else chunk.page_content
+            } for chunk in chunks
+        ]
+    }
 
-def detect_and_translate(text: str) -> tuple[str, str]:
+def process_transcript_entries(transcript_data, video_id, detected_lang):
     """
-    Detect language and translate to English if Hindi
+    Process transcript entries to create optimized chunks with sliding window.
     """
-    try:
-        detected_lang = detect(text)
-        if detected_lang == 'hi':
-            try:
-                return translator.translate(text), detected_lang
-            except Exception as e:
-                print(f"Translation error: {e}")
-                return text, detected_lang
-        return text, detected_lang
-    except Exception as e:
-        print(f"Language detection error: {e}")
-        return text, 'unknown'
+    print(f"\n=== Processing Transcript Data ===")
+    print(f"Total transcript entries: {len(transcript_data)}")
+    print(f"Video ID: {video_id}")
+    print(f"Language: {detected_lang}")
+    
+    # First, combine all transcript entries into a single document with metadata
+    combined_entries = []
+    TARGET_CHUNK_SIZE = 2500
+    
+    for entry in transcript_data:
+        combined_entries.append({
+            'text': entry['text'],
+            'start_time': entry['start_time'],
+            'duration': entry['duration'],
+            'original_text': entry['original_text']
+        })
+    
+    print(f"Combined entries: {len(combined_entries)}")
+    
+    # Create documents with combined text and preserved metadata
+    docs = []
+    current_chunk = []
+    current_metadata = {
+        'start_time': 0,
+        'duration': 0,
+        'segments': [],
+        'video_id': video_id,
+        'detected_language': detected_lang
+    }
+    
+    for entry in combined_entries:
+        current_chunk.append(entry['text'])
+        
+        # Update metadata
+        if not current_metadata['segments']:
+            current_metadata['start_time'] = entry['start_time']
+        
+        current_metadata['duration'] += entry['duration']
+        current_metadata['segments'].append({
+            'text': entry['text'],
+            'original_text': entry['original_text'],
+            'start_time': entry['start_time'],
+            'duration': entry['duration']
+        })
+        
+        # Create a document when we have enough text
+        combined_text = ' '.join(current_chunk)
+        if len(combined_text) >= TARGET_CHUNK_SIZE:
+            docs.append(Document(
+                page_content=combined_text,
+                metadata=current_metadata.copy()
+            ))
+            print(f"Created chunk {len(docs)} with {len(current_metadata['segments'])} segments")
+            
+            # Reset for next chunk, keeping overlap
+            overlap_segments = current_metadata['segments'][-2:]  # Keep last 2 segments for overlap
+            current_chunk = [seg['text'] for seg in overlap_segments]
+            current_metadata = {
+                'start_time': overlap_segments[0]['start_time'],
+                'duration': sum(seg['duration'] for seg in overlap_segments),
+                'segments': overlap_segments,
+                'video_id': video_id,
+                'detected_language': detected_lang
+            }
+    
+    # Add the last chunk if it has content
+    if current_chunk:
+        docs.append(Document(
+            page_content=' '.join(current_chunk),
+            metadata=current_metadata.copy()
+        ))
+        print(f"Created final chunk {len(docs)} with {len(current_metadata['segments'])} segments")
+    
+    print(f"\nTotal chunks created: {len(docs)}")
+    print("=== Processing Complete ===\n")
+    return docs
 
 def get_transcript_safely(video_id, languages):
     try:
+        print(f"\n=== Fetching Transcript ===")
+        print(f"Video ID: {video_id}")
         transcript_list = ytt_api.list(video_id)
-        print("Available transcripts:", transcript_list)
         
         # Initialize list to store transcript data
         transcript_data = []
-        detected_lang = None  # Will store the detected language
+        detected_lang = None
         
         for transcript in transcript_list:
-            # fetch the actual transcript data
             data = transcript.fetch()
+            print(f"Fetched transcript with {len(data) if data else 0} entries")
             
-            # Detect language only from the first entry
             if data and not detected_lang:
                 try:
                     detected_lang = detect(data[0].text)
@@ -158,13 +281,12 @@ def get_transcript_safely(video_id, languages):
                     print(f"Language detection error: {e}")
                     detected_lang = 'unknown'
             
-            # Process all entries based on the detected language
             for entry in data:
                 original_text = entry.text
-                # Translate only if Hindi was detected
                 if detected_lang == 'hi':
                     try:
                         processed_text = translator.translate(original_text)
+                        print("Translated text from Hindi to English")
                     except Exception as e:
                         print(f"Translation error: {e}")
                         processed_text = original_text
@@ -179,48 +301,54 @@ def get_transcript_safely(video_id, languages):
                     'detected_language': detected_lang
                 })
         
-        # Create Document objects directly from transcript entries
-        docs = [
-            Document(
-                page_content=f"{entry['text']}",
-                metadata={
-                    'start_time': entry['start_time'],
-                    'duration': entry['duration'],
-                    'video_id': video_id,
-                    'original_text': entry['original_text'],
-                    'detected_language': detected_lang
-                }
-            ) for entry in transcript_data
-        ]
+        if not transcript_data:
+            print("No transcript data found")
+            return {
+                'success': False,
+                'error': "No transcript data found"
+            }
         
-        # Split documents if they're too long
-        split_docs = text_splitter.split_documents(documents=docs)
+        print(f"Total transcript entries collected: {len(transcript_data)}")
         
-        print("split_docs: ", split_docs)
+        # Process transcript data using sliding window approach
+        docs = process_transcript_entries(transcript_data, video_id, detected_lang)
         
-        # Initialize vector store with Gemini embeddings
-        vector_store = QdrantVectorStore.from_documents(
-            documents=[],
-            url="http://localhost:6333",
-            collection_name="yt-rag",
-            embedding=embeddings,
-        )
-        
-        vector_store.add_documents(documents=split_docs)
-        print("Ingestion Done!")
-        
-        return {
-            'success': True,
-            'data': transcript_data
-        }
+        try:
+            print("\n=== Storing in Vector Database ===")
+            # Get vector store and add documents
+            vector_store = get_vector_store()
+            print(f"Adding {len(docs)} documents to vector store")
+            vector_store.add_documents(documents=docs)
+            print("Successfully stored all documents")
+            
+            return {
+                'success': True,
+                'data': transcript_data,
+                'chunks_processed': len(docs)
+            }
+            
+        except Exception as e:
+            print(f"Vector store error: {str(e)}")
+            # Return partial success if we at least got the transcript
+            return {
+                'success': True,
+                'data': transcript_data,
+                'warning': f"Failed to store in vector database: {str(e)}"
+            }
         
     except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable) as e:
+        print(f"YouTube transcript error: {str(e)}")
         return {
             'success': False,
             'error': str(e)
         }
-        
-        
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
 @app.route('/api/transcript', methods=['GET'])
 def get_transcript():
     video_id = request.args.get('video_id')
@@ -233,7 +361,6 @@ def get_transcript():
         }), 400
         
     result = get_transcript_safely(video_id, languages)
-    
     return jsonify(result)
 
 @app.route('/api/query', methods=['POST'])
@@ -247,22 +374,13 @@ def query_transcript():
             }), 400
 
         user_query = data['query']
-        
-        # Get relevant chunks
         relevant_chunks = get_relevant_transcript_chunks(user_query)
-        
-        # Get AI response
-        response = get_ai_response(user_query, relevant_chunks)
+        response_data = get_ai_response(user_query, relevant_chunks)
         
         return jsonify({
             "success": True,
-            "response": response,
-            "chunks": [
-                {
-                    "text": chunk.page_content,
-                    "metadata": chunk.metadata
-                } for chunk in relevant_chunks
-            ]
+            "response": response_data["content"],
+            "timestamps": response_data["timestamps"]
         })
 
     except Exception as e:

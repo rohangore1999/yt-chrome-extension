@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import "./Popup.css";
-import { YoutubeTranscript } from "youtube-transcript";
 import { getTranscript, queryTranscript } from "../services/apis";
 
 const Popup = () => {
@@ -12,9 +11,14 @@ const Popup = () => {
 
   // Function to convert timestamp text to seconds
   const convertTimestampToSeconds = (timestampText) => {
-    // Extract just the number from the timestamp
-    const match = timestampText.match(/(\d+(?:\.\d+)?)/);
-    return match ? Math.floor(parseFloat(match[1])) : null;
+    // Handle MM:SS format
+    const parts = timestampText.split(":");
+    if (parts.length === 2) {
+      const minutes = parseInt(parts[0], 10);
+      const seconds = parseInt(parts[1], 10);
+      return minutes * 60 + seconds;
+    }
+    return null;
   };
 
   // Function to create YouTube timestamp URL
@@ -22,53 +26,60 @@ const Popup = () => {
     return `https://www.youtube.com/watch?v=${videoId}&t=${seconds}`;
   };
 
+  // Function to create a clickable timestamp link
+  const TimestampLink = ({ time, text }) => {
+    const seconds = convertTimestampToSeconds(time);
+    if (seconds === null) return <span>{text}</span>;
+
+    return (
+      <a
+        href={createTimestampUrl(seconds)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="timestamp-link"
+        onClick={(e) => {
+          e.preventDefault();
+          window.open(createTimestampUrl(seconds), "_blank");
+        }}
+      >
+        [{time}]
+      </a>
+    );
+  };
+
   // Function to process message text and make timestamps clickable
-  const processMessageText = (text) => {
-    // Match timestamps in format [123.456s] or similar
-    const timestampRegex = /\[(\d+(?:\.\d+)?s)\]/g;
-    const parts = text.split(timestampRegex);
+  const processMessageText = (text, timestamps) => {
+    if (!timestamps || !Array.isArray(timestamps)) {
+      return <p>{text}</p>;
+    }
+
+    // Create a map of timestamps to make them easily accessible
+    const timestampMap = new Map(timestamps.map((ts) => [ts.time, ts]));
+
+    // Find timestamp patterns in the text [MM:SS]
+    const parts = text.split(/(\[\d{2}:\d{2}\])/g);
 
     if (parts.length <= 1) return <p>{text}</p>;
 
-    const elements = [];
-    let i = 0;
-
-    const matches = text.match(timestampRegex) || [];
-    matches.forEach((fullMatch, index) => {
-      // Add text before timestamp
-      if (parts[i]) {
-        elements.push(<span key={`text-${i}`}>{parts[i]}</span>);
-      }
-
-      // Extract the timestamp value
-      const seconds = convertTimestampToSeconds(fullMatch);
-      if (seconds !== null) {
-        elements.push(
-          <a
-            key={`timestamp-${i}`}
-            href={createTimestampUrl(seconds)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="timestamp-link"
-            onClick={(e) => {
-              e.preventDefault();
-              window.open(createTimestampUrl(seconds), "_blank");
-            }}
-          >
-            {fullMatch}
-          </a>
-        );
-      }
-
-      i += 2; // Move to next text part
-    });
-
-    // Add remaining text
-    if (parts[i]) {
-      elements.push(<span key={`text-${i}`}>{parts[i]}</span>);
-    }
-
-    return <p>{elements}</p>;
+    return (
+      <p>
+        {parts.map((part, index) => {
+          const timeMatch = part.match(/\[(\d{2}:\d{2})\]/);
+          if (timeMatch) {
+            const time = timeMatch[1];
+            const timestampData = timestampMap.get(time);
+            return (
+              <TimestampLink
+                key={`timestamp-${index}`}
+                time={time}
+                text={timestampData?.text || part}
+              />
+            );
+          }
+          return <span key={`text-${index}`}>{part}</span>;
+        })}
+      </p>
+    );
   };
 
   const handleSubmit = async () => {
@@ -88,6 +99,7 @@ const Popup = () => {
           {
             text: response.response,
             type: "system",
+            timestamps: response.timestamps, // Store timestamps with the message
           },
         ]);
       } else {
@@ -200,7 +212,7 @@ const Popup = () => {
                   message.type === "user" ? "user-message" : "system-message"
                 } ${message.isError ? "error-message" : ""}`}
               >
-                {processMessageText(message.text)}
+                {processMessageText(message.text, message.timestamps)}
               </div>
             ))}
             {isLoading && (
