@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import "./Popup.css";
 import { getTranscript, queryTranscript } from "../services/apis";
 import MarkdownResponse from "./MarkdownResponse";
-
 
 const Popup = () => {
   const [messages, setMessages] = useState([]);
@@ -10,6 +9,30 @@ const Popup = () => {
   const [videoId, setVideoId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isTranscriptLoading, setIsTranscriptLoading] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    messages.forEach((message) => {
+      if (message.type === "user") {
+        scrollToBottom();
+      }
+    });
+  }, [messages]);
+
+  const handleClose = () => {
+    // Check if we're in an iframe (overlay mode)
+    if (window.parent !== window) {
+      // Send message to content script to close overlay
+      window.parent.postMessage({ action: "closePopup" }, "*");
+    } else {
+      // Fallback for regular popup
+      window.close();
+    }
+  };
 
   const handleSubmit = async () => {
     if (!input.trim()) return;
@@ -121,6 +144,12 @@ const Popup = () => {
 
   return (
     <div className="popup">
+      <div className="popup-header">
+        <h3>YouTube Chatbot</h3>
+        <button className="close-button" onClick={handleClose} title="Close">
+          ✕
+        </button>
+      </div>
       <div className="chat-container">
         {isTranscriptLoading ? (
           <div className="loading-container">
@@ -151,6 +180,7 @@ const Popup = () => {
                 <p>Thinking...</p>
               </div>
             )}
+            <div ref={messagesEndRef} />
           </div>
         )}
       </div>

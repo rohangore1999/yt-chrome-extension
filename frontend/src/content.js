@@ -11,6 +11,117 @@ const saveVideoId = () => {
   }
 };
 
+// Popup overlay functionality
+let popupOverlay = null;
+
+const createPopupOverlay = () => {
+  if (popupOverlay) return popupOverlay;
+
+  // Create overlay container
+  const overlay = document.createElement("div");
+  overlay.id = "youtube-chatbot-overlay";
+  overlay.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 420px;
+    height: auto;
+    max-height: 600px;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    z-index: 10000;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: none;
+  `;
+
+  // Create iframe to load the popup content
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = `
+    width: 100%;
+    height: 600px;
+    border: none;
+    border-radius: 12px;
+  `;
+
+  // Get extension URL for the popup
+  iframe.src = chrome.runtime.getURL("index.html");
+
+  overlay.appendChild(iframe);
+  document.body.appendChild(overlay);
+
+  // Prevent clicks inside overlay from closing it
+  overlay.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+
+  return overlay;
+};
+
+const togglePopup = () => {
+  if (!popupOverlay) {
+    popupOverlay = createPopupOverlay();
+  }
+
+  if (popupOverlay.style.display === "none" || !popupOverlay.style.display) {
+    popupOverlay.style.display = "block";
+    // Focus the iframe for better UX
+    const iframe = popupOverlay.querySelector("iframe");
+    if (iframe) iframe.focus();
+  } else {
+    popupOverlay.style.display = "none";
+  }
+};
+
+const closePopup = () => {
+  if (popupOverlay) {
+    popupOverlay.style.display = "none";
+    // Notify background script
+    chrome.runtime.sendMessage({ action: "popupClosed" });
+  }
+};
+
+// Listen for messages from background script
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "togglePopup") {
+    togglePopup();
+    sendResponse({ success: true });
+  } else if (request.action === "closePopup") {
+    closePopup();
+    sendResponse({ success: true });
+  }
+});
+
+// Close popup when clicking outside
+document.addEventListener("click", (e) => {
+  if (
+    popupOverlay &&
+    popupOverlay.style.display === "block" &&
+    !popupOverlay.contains(e.target)
+  ) {
+    // Don't auto-close on outside clicks - this was the main issue!
+    // Users wanted control over when it closes
+    // closePopup();
+  }
+});
+
+// Close popup on Escape key
+document.addEventListener("keydown", (e) => {
+  if (
+    e.key === "Escape" &&
+    popupOverlay &&
+    popupOverlay.style.display === "block"
+  ) {
+    closePopup();
+  }
+});
+
+// Listen for messages from iframe
+window.addEventListener("message", (event) => {
+  // Only accept messages from our extension
+  if (event.data && event.data.action === "closePopup") {
+    closePopup();
+  }
+});
 
 // Initial load
 document.addEventListener("DOMContentLoaded", saveVideoId);
