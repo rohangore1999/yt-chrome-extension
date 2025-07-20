@@ -1,0 +1,234 @@
+.loading-screen {
+  width: 100%;
+  height: 100%;
+  background: var(--background);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.loading-card {
+  width: 100%;
+  max-width: 24rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.loading-card-background {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 0, 0, 0.1);
+}
+
+.loading-accent-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 0.25rem;
+  background: var(--primary);
+  animation: shimmer 2s linear infinite;
+}
+
+.loading-content {
+  padding: 2rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  position: relative;
+  z-index: 10;
+}
+
+/* Icon Section */
+.loading-icon-container {
+  position: relative;
+}
+
+.loading-icon-glow {
+  position: absolute;
+  inset: 0;
+  animation: glow 2s ease-in-out infinite;
+  border-radius: 50%;
+  background: var(--primary);
+  filter: blur(16px);
+}
+
+.loading-icon-ping {
+  position: absolute;
+  inset: 0;
+  animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+  border-radius: 50%;
+  background-color: rgba(255, 0, 0, 0.3);
+}
+
+.loading-icon-circle {
+  position: relative;
+  height: 5rem;
+  width: 5rem;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: rgba(255, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: float 3s ease-in-out infinite;
+  border: 2px solid rgba(255, 0, 0, 0.2);
+}
+
+.loading-main-icon {
+  height: 2.5rem;
+  width: 2.5rem;
+  color: var(--primary);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Text Section */
+.loading-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.loading-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0;
+}
+
+.loading-description {
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+  margin: 0;
+}
+
+/* Progress Section */
+.loading-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.loading-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.status-icon {
+  height: 0.75rem;
+  width: 0.75rem;
+}
+
+.status-icon:first-child {
+  animation: bounce 1s infinite;
+}
+
+.status-icon:last-of-type {
+  animation: spin 1s linear infinite;
+}
+
+.progress-bar-container {
+  width: 100%;
+  background-color: var(--muted);
+  border-radius: 9999px;
+  height: 0.375rem;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 9999px;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Messages Section */
+.loading-messages {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.loading-messages p {
+  margin: 0;
+}
+
+.message-secondary {
+  margin-top: 0.25rem;
+}
+
+/* Animations */
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes glow {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(-25%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+
+@keyframes ping {
+  75%,
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}

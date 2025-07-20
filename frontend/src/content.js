@@ -11,6 +11,25 @@ const saveVideoId = () => {
   }
 };
 
+// Function to seek to timestamp in YouTube video
+const seekToTimestamp = (seconds) => {
+  try {
+    // Find the YouTube video element
+    const video = document.querySelector("video");
+    if (video) {
+      video.currentTime = seconds;
+      console.log(`Seeked to ${seconds} seconds`);
+      return true;
+    } else {
+      console.log("Video element not found");
+      return false;
+    }
+  } catch (error) {
+    console.error("Error seeking to timestamp:", error);
+    return false;
+  }
+};
+
 // Popup overlay functionality
 let popupOverlay = null;
 
@@ -38,7 +57,7 @@ const createPopupOverlay = () => {
   const iframe = document.createElement("iframe");
   iframe.style.cssText = `
     width: 100%;
-    height: 600px;
+    height: 640px;
     border: none;
     border-radius: 12px;
   `;
@@ -88,6 +107,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === "closePopup") {
     closePopup();
     sendResponse({ success: true });
+  } else if (request.action === "seekToTimestamp") {
+    const success = seekToTimestamp(request.seconds);
+    sendResponse({ success: success });
   }
 });
 

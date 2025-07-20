@@ -31,17 +31,29 @@ const MarkdownResponse = ({ text, videoId }) => {
     if (seconds !== null) {
       return (
         <a
-          href={createTimestampUrl(seconds)}
+          href="#"
           rel="noopener noreferrer"
           className="timestamp-link"
           onClick={(e) => {
             e.preventDefault();
-            const url = createTimestampUrl(seconds);
-            console.log("Navigating to:", url);
-            // As we are using chrome extension, Use Chrome's API to update the current tab's URL
+            console.log("Seeking to timestamp:", seconds);
+            // Send message to content script to seek to timestamp
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
               if (tabs[0]) {
-                chrome.tabs.update(tabs[0].id, { url: url });
+                chrome.tabs.sendMessage(
+                  tabs[0].id,
+                  {
+                    action: "seekToTimestamp",
+                    seconds: seconds,
+                  },
+                  (response) => {
+                    if (response && response.success) {
+                      console.log("Successfully seeked to timestamp");
+                    } else {
+                      console.log("Failed to seek to timestamp");
+                    }
+                  }
+                );
               }
             });
           }}
