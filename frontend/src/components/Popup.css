@@ -87,22 +87,3 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.7;
 }
-
-.timestamp-link {
-  color: #2196f3;
-  text-decoration: none;
-  cursor: pointer;
-  padding: 2px 6px;
-  margin: 0 2px;
-  border-radius: 4px;
-  background-color: rgba(33, 150, 243, 0.1);
-  transition: all 0.2s ease;
-  display: inline-block;
-  font-weight: 500;
-}
-
-.timestamp-link:hover {
-  background-color: rgba(33, 150, 243, 0.2);
-  text-decoration: underline;
-  transform: translateY(-1px);
-}

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import "./Popup.css";
 import { getTranscript, queryTranscript } from "../services/apis";
+import MarkdownResponse from "./MarkdownResponse";
+
 
 const Popup = () => {
   const [messages, setMessages] = useState([]);
@@ -9,88 +11,13 @@ const Popup = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isTranscriptLoading, setIsTranscriptLoading] = useState(false);
 
-  // Function to convert timestamp text to seconds
-  const convertTimestampToSeconds = (timestampText) => {
-    // Handle MM:SS format
-    const parts = timestampText.split(":");
-    if (parts.length === 2) {
-      const minutes = parseInt(parts[0], 10);
-      const seconds = parseInt(parts[1], 10);
-      return minutes * 60 + seconds;
-    }
-    return null;
-  };
-
-  // Function to create YouTube timestamp URL
-  const createTimestampUrl = (seconds) => {
-    return `https://www.youtube.com/watch?v=${videoId}&t=${seconds}`;
-  };
-
-  // Function to create a clickable timestamp link
-  const TimestampLink = ({ time, text }) => {
-    const seconds = convertTimestampToSeconds(time);
-    if (seconds === null) return <span>{text}</span>;
-
-    return (
-      <a
-        href={createTimestampUrl(seconds)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="timestamp-link"
-        onClick={(e) => {
-          e.preventDefault();
-          window.open(createTimestampUrl(seconds), "_blank");
-        }}
-      >
-        [{time}]
-      </a>
-    );
-  };
-
-  // Function to process message text and make timestamps clickable
-  const processMessageText = (text, timestamps) => {
-    if (!timestamps || !Array.isArray(timestamps)) {
-      return <p>{text}</p>;
-    }
-
-    // Create a map of timestamps to make them easily accessible
-    const timestampMap = new Map(timestamps.map((ts) => [ts.time, ts]));
-
-    // Find timestamp patterns in the text [MM:SS]
-    const parts = text.split(/(\[\d{2}:\d{2}\])/g);
-
-    if (parts.length <= 1) return <p>{text}</p>;
-
-    return (
-      <p>
-        {parts.map((part, index) => {
-          const timeMatch = part.match(/\[(\d{2}:\d{2})\]/);
-          if (timeMatch) {
-            const time = timeMatch[1];
-            const timestampData = timestampMap.get(time);
-            return (
-              <TimestampLink
-                key={`timestamp-${index}`}
-                time={time}
-                text={timestampData?.text || part}
-              />
-            );
-          }
-          return <span key={`text-${index}`}>{part}</span>;
-        })}
-      </p>
-    );
-  };
-
   const handleSubmit = async () => {
-    if (!input.trim()) return; // Don't submit empty messages
+    if (!input.trim()) return;
 
-    // Add user message
     setMessages([...messages, { text: input, type: "user" }]);
 
     try {
       setIsLoading(true);
-      // Get AI response
       const response = await queryTranscript(input);
 
       if (response.success) {
@@ -99,7 +26,7 @@ const Popup = () => {
           {
             text: response.response,
             type: "system",
-            timestamps: response.timestamps, // Store timestamps with the message
+            timestamps: response.timestamps,
           },
         ]);
       } else {
@@ -123,7 +50,7 @@ const Popup = () => {
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault(); // Prevent default to avoid new line in input
+      e.preventDefault();
       handleSubmit();
     }
   };
@@ -131,14 +58,12 @@ const Popup = () => {
   const fetchTranscript = async (videoId) => {
     try {
       setIsTranscriptLoading(true);
-      // Clear existing messages when video changes
       setMessages([]);
 
       const transcript = await getTranscript(videoId);
       console.log({ transcript });
 
       if (transcript.success) {
-        // Add welcome message for new video
         setMessages([
           {
             text: "Hi! I'm ready to answer questions about this video. What would you like to know?",
@@ -169,7 +94,6 @@ const Popup = () => {
   };
 
   useEffect(() => {
-    // Initial load of videoId
     chrome.storage.sync.get(["videoId"], (result) => {
       console.log("Initial videoId:", result);
       if (result.videoId) {
@@ -178,7 +102,6 @@ const Popup = () => {
       }
     });
 
-    // Add listener for storage changes
     const handleStorageChange = (changes, namespace) => {
       if (namespace === "sync" && changes.videoId) {
         console.log("VideoId changed:", changes.videoId.newValue);
@@ -187,14 +110,14 @@ const Popup = () => {
       }
     };
 
-    // Add the listener
     chrome.storage.onChanged.addListener(handleStorageChange);
 
-    // Cleanup: remove listener when component unmounts
     return () => {
       chrome.storage.onChanged.removeListener(handleStorageChange);
     };
-  }, []); // Empty dependency array since we want this to run once on mount
+  }, []);
+
+  console.log({ messages });
 
   return (
     <div className="popup">
@@ -212,7 +135,15 @@ const Popup = () => {
                   message.type === "user" ? "user-message" : "system-message"
                 } ${message.isError ? "error-message" : ""}`}
               >
-                {processMessageText(message.text, message.timestamps)}
+                {message.type === "user" ? (
+                  <p>{message.text}</p>
+                ) : (
+                  <MarkdownResponse
+                    text={message.text}
+                    timestamps={message.timestamps}
+                    videoId={videoId}
+                  />
+                )}
               </div>
             ))}
             {isLoading && (

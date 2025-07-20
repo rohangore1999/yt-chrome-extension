@@ -282,39 +282,57 @@ The backend uses a structured approach for generating responses:
    - Language detection fallbacks
    - Translation error recovery
 
+### Vector Store Management
+
+The system uses Qdrant as a vector database to store and retrieve transcript chunks. Key features include:
+
+1. **Collection Management**:
+
+```python
+def ensure_collection_exists(collection_name: str, recreate: bool = True):
+    # Deletes existing collection if recreate=True
+    if recreate:
+        qdrant_client.delete_collection(collection_name)
+
+    # Creates fresh collection
+    qdrant_client.create_collection(
+        collection_name=collection_name,
+        vectors_config=VectorParams(
+            size=embedding_size,
+            distance=Distance.COSINE
+        )
+    )
+```
+
+2. **Fresh Data Storage**:
+
+- Each video transcript is stored in a fresh collection
+- Prevents data contamination between different videos
+- Ensures accurate context retrieval
+
+3. **Vector Store Operations**:
+
+```python
+def get_vector_store(recreate: bool = True):
+    # Creates new collection for each video
+    ensure_collection_exists("yt-rag", recreate=recreate)
+    return QdrantVectorStore(
+        client=qdrant_client,
+        collection_name="yt-rag",
+        embedding=embeddings,
+    )
+```
+
+4. **Benefits of Collection Recreation**:
+   - Prevents duplicate chunks
+   - Ensures clean context for each video
+   - Maintains data integrity
+   - Improves search accuracy
+
 ## Development Setup
 
 1. Install dependencies:
 
-```bash
-npm install
 ```
 
-2. Start development server:
-
-```bash
-npm run dev
-```
-
-3. Build for production:
-
-```bash
-npm run build
-```
-
-## Project Structure
-
-```
-frontend/
-├── src/
-│   ├── components/
-│   │   ├── Popup.jsx        # Main chat interface
-│   │   └── Popup.css        # Styles for chat interface
-│   ├── services/
-│   │   └── apis.js          # API integration
-│   ├── background.js        # Chrome extension background script
-│   ├── content.js           # Content script for YouTube integration
-│   └── main.jsx            # Entry point
-├── public/                  # Static assets
-└── manifest.json           # Chrome extension manifest
 ```

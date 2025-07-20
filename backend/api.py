@@ -16,6 +16,9 @@ from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Distance, VectorParams
 
+# Set console encoding to UTF-8
+sys.stdout.reconfigure(encoding='utf-8')
+
 # Load environment variables
 load_dotenv()
 
@@ -31,36 +34,43 @@ ytt_api = YouTubeTranscriptApi()
 # Initialize Qdrant client
 qdrant_client = QdrantClient(url="http://localhost:6333")
 
-def ensure_collection_exists(collection_name: str, embedding_size: int = 768):
+def ensure_collection_exists(collection_name: str, embedding_size: int = 768, recreate: bool = True):
     """
     Ensures that the Qdrant collection exists, creates it if it doesn't.
+    If recreate is True, it will delete and recreate the collection.
     """
     try:
-        # Try to get collection info
-        collection_info = qdrant_client.get_collection(collection_name)
-        print(f"Collection {collection_name} exists")
-        return True
-    except UnexpectedResponse as e:
-        if "doesn't exist" in str(e):
-            try:
-                # Create collection if it doesn't exist
-                qdrant_client.create_collection(
-                    collection_name=collection_name,
-                    vectors_config=VectorParams(
-                        size=embedding_size,
-                        distance=Distance.COSINE
-                    )
+        # Check if collection exists
+        collection_exists = False
+        try:
+            collection_info = qdrant_client.get_collection(collection_name)
+            collection_exists = True
+        except UnexpectedResponse:
+            collection_exists = False
+
+        # Handle recreation if needed
+        if collection_exists and recreate:
+            print(f"Deleting existing collection {collection_name}")
+            qdrant_client.delete_collection(collection_name)
+            collection_exists = False
+        
+        # Create collection if it doesn't exist
+        if not collection_exists:
+            qdrant_client.create_collection(
+                collection_name=collection_name,
+                vectors_config=VectorParams(
+                    size=embedding_size,
+                    distance=Distance.COSINE
                 )
-                print(f"Successfully created collection: {collection_name}")
-                return True
-            except Exception as create_error:
-                print(f"Failed to create collection: {str(create_error)}")
-                return False
+            )
+            print(f"Successfully created collection: {collection_name}")
         else:
-            print(f"Unexpected response from Qdrant: {str(e)}")
-            return False
+            print(f"Using existing collection: {collection_name}")
+        
+        return True
+            
     except Exception as e:
-        print(f"Error checking/creating collection: {str(e)}")
+        print(f"Error in ensure_collection_exists: {str(e)}")
         return False
 
 # Set console encoding to UTF-8
@@ -82,13 +92,14 @@ embeddings = GoogleGenerativeAIEmbeddings(
     google_api_key=GOOGLE_API_KEY,
 )
 
-def get_vector_store():
+def get_vector_store(recreate: bool = True):
     """
     Get or create vector store for the collection.
+    If recreate is True, it will create a fresh collection.
     """
     try:
         # Try to ensure collection exists
-        if not ensure_collection_exists("yt-rag"):
+        if not ensure_collection_exists("yt-rag", recreate=recreate):
             raise Exception("Failed to create or verify collection")
         
         # Initialize vector store
@@ -106,7 +117,8 @@ def get_relevant_transcript_chunks(query: str):
     Retrieve semantically relevant chunks of the video transcript based on the query.
     """
     try:
-        vector_store = get_vector_store()
+        # When querying, we don't need to recreate the vector store
+        vector_store = get_vector_store(recreate=False)
         return vector_store.similarity_search(query=query)
     except Exception as e:
         print(f"Error during similarity search: {e}")
@@ -148,34 +160,43 @@ def get_ai_response(query: str, chunks):
     When responding:
     1. Structure your response with clear sections (e.g., ### Overview, ### Details)
     2. Use bullet points for clarity
-    3. ALWAYS include timestamps in [MM:SS] format at the end of each point
+    3. ALWAYS include timestamps in [MM:SS] format (not parentheses)
     4. Keep responses concise and focused
     5. Format timestamps consistently as [MM:SS] or [HH:MM:SS] for longer videos
-    6. Place timestamps at the end of each statement in parentheses
+    6. Place timestamps at the end of each point in square brackets, like: [MM:SS]
+    7. Make sure each point has a unique and accurate timestamp
+    
+    Example format:
+    * This is a point about the video [12:34]
+    * Another important point from a different part [15:20]
     
     Available Context:
     {formatted_chunks}
 
     User Question: {query}
-    
-    Format each point as:
-    * Statement or point (MM:SS)
     """
 
     response = model.generate_content(system_prompt)
     
-    # Process response to make timestamps clickable
+    # Process response to ensure timestamps are properly formatted
     processed_response = response.text
     
-    # Return structured response
+    # Extract all timestamps from the response for the timestamps array
+    timestamp_pattern = r'\[(\d{2}:\d{2})\]'
+    found_timestamps = []
+    
+    for chunk in chunks:
+        timestamp = format_timestamp(chunk.metadata.get('start_time', 0))
+        text_preview = chunk.page_content[:100] + "..." if len(chunk.page_content) > 100 else chunk.page_content
+        found_timestamps.append({
+            "time": timestamp,
+            "text": text_preview
+        })
+    
+    # Return structured response with actual timestamps from chunks
     return {
         "content": processed_response,
-        "timestamps": [
-            {
-                "time": format_timestamp(chunk.metadata.get('start_time', 0)),
-                "text": chunk.page_content[:100] + "..." if len(chunk.page_content) > 100 else chunk.page_content
-            } for chunk in chunks
-        ]
+        "timestamps": found_timestamps
     }
 
 def process_transcript_entries(transcript_data, video_id, detected_lang):
@@ -315,11 +336,11 @@ def get_transcript_safely(video_id, languages):
         
         try:
             print("\n=== Storing in Vector Database ===")
-            # Get vector store and add documents
-            vector_store = get_vector_store()
-            print(f"Adding {len(docs)} documents to vector store")
+            # Get vector store with recreation enabled
+            vector_store = get_vector_store(recreate=True)
+            print(f"Adding {len(docs)} documents to fresh vector store")
             vector_store.add_documents(documents=docs)
-            print("Successfully stored all documents")
+            print("Successfully stored all documents in new collection")
             
             return {
                 'success': True,
