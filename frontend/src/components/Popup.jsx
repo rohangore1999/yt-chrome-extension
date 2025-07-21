@@ -28,7 +28,7 @@ const SUGGESTED_QUESTIONS = [
   "Can you break down the tutorial steps?",
 ];
 
-const Popup = () => {
+const Popup = ({ onApiKeyChange }) => {
   const [messages, setMessages] = useState([
     {
       id: "1",
@@ -120,9 +120,8 @@ const Popup = () => {
   };
 
   const handleKeyChange = () => {
-    // goto api key screen
-    window.location.href =
-      "chrome-extension://" + chrome.runtime.id + "/index.html";
+    // Call the parent function to handle API key change
+    onApiKeyChange();
   };
 
   const fetchTranscript = async (videoId) => {

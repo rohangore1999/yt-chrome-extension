@@ -113,7 +113,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// Close popup when clicking outside
+// Dont close popup when clicking outside
 document.addEventListener("click", (e) => {
   if (
     popupOverlay &&

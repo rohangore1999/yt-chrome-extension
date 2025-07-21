@@ -22,12 +22,12 @@ sys.stdout.reconfigure(encoding='utf-8')
 # Load environment variables
 load_dotenv()
 
-# Configure Google API
-GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-if not GOOGLE_API_KEY:
-    raise ValueError("GOOGLE_API_KEY not found in environment variables")
+# Configure Google API - remove default key setup
+# GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+# if not GOOGLE_API_KEY:
+#     raise ValueError("GOOGLE_API_KEY not found in environment variables")
 
-genai.configure(api_key=GOOGLE_API_KEY)
+# genai.configure(api_key=GOOGLE_API_KEY)
 translator = GoogleTranslator(source='auto', target='en')
 ytt_api = YouTubeTranscriptApi()
 
@@ -86,13 +86,16 @@ text_splitter = RecursiveCharacterTextSplitter(
     length_function=len,
 )
 
-# Initialize Gemini embeddings for semantic search
-embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/embedding-001",
-    google_api_key=GOOGLE_API_KEY,
-)
+def get_embeddings(api_key):
+    """
+    Initialize Gemini embeddings with the provided API key
+    """
+    return GoogleGenerativeAIEmbeddings(
+        model="models/embedding-001",
+        google_api_key=api_key,
+    )
 
-def get_vector_store(recreate: bool = True):
+def get_vector_store(api_key, recreate: bool = True):
     """
     Get or create vector store for the collection.
     If recreate is True, it will create a fresh collection.
@@ -102,7 +105,8 @@ def get_vector_store(recreate: bool = True):
         if not ensure_collection_exists("yt-rag", recreate=recreate):
             raise Exception("Failed to create or verify collection")
         
-        # Initialize vector store
+        # Initialize vector store with provided API key
+        embeddings = get_embeddings(api_key)
         return QdrantVectorStore(
             client=qdrant_client,
             collection_name="yt-rag",
@@ -112,16 +116,17 @@ def get_vector_store(recreate: bool = True):
         print(f"Error in get_vector_store: {str(e)}")
         raise
 
-def get_relevant_transcript_chunks(query: str):
+def get_relevant_transcript_chunks(query: str, api_key: str):
     """
     Retrieve semantically relevant chunks of the video transcript based on the query.
     """
     try:
-        # When querying, we don't need to recreate the vector store
-        vector_store = get_vector_store(recreate=False)
+        # Use existing vector store (transcript should already be processed)
+        vector_store = get_vector_store(api_key, recreate=False)
         return vector_store.similarity_search(query=query)
     except Exception as e:
         print(f"Error during similarity search: {e}")
+        # Return empty list if no vector store exists yet
         return []
 
 def format_timestamp(seconds):
@@ -136,10 +141,11 @@ def format_timestamp(seconds):
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     return f"{minutes:02d}:{secs:02d}"
 
-def get_ai_response(query: str, chunks):
+def get_ai_response(query: str, chunks, api_key: str):
     """
     Get AI response based on the query and relevant transcript chunks using Gemini.
     """
+    genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-2.5-pro')
     
     # Format chunks to include translated text and timestamps
@@ -280,7 +286,7 @@ def process_transcript_entries(transcript_data, video_id, detected_lang):
     print("=== Processing Complete ===\n")
     return docs
 
-def get_transcript_safely(video_id, languages):
+def get_transcript_safely(video_id, languages, api_key):
     try:
         print(f"\n=== Fetching Transcript ===")
         print(f"Video ID: {video_id}")
@@ -335,12 +341,11 @@ def get_transcript_safely(video_id, languages):
         docs = process_transcript_entries(transcript_data, video_id, detected_lang)
         
         try:
-            print("\n=== Storing in Vector Database ===")
-            # Get vector store with recreation enabled
-            vector_store = get_vector_store(recreate=True)
-            print(f"Adding {len(docs)} documents to fresh vector store")
+            print(f"\n=== Storing in Vector Database ===")
+            # Store documents in vector database immediately
+            vector_store = get_vector_store(api_key, recreate=True)
             vector_store.add_documents(documents=docs)
-            print("Successfully stored all documents in new collection")
+            print(f"Successfully stored {len(docs)} documents in vector database")
             
             return {
                 'success': True,
@@ -354,6 +359,7 @@ def get_transcript_safely(video_id, languages):
             return {
                 'success': True,
                 'data': transcript_data,
+                'chunks_processed': len(docs),
                 'warning': f"Failed to store in vector database: {str(e)}"
             }
         
@@ -374,29 +380,44 @@ def get_transcript_safely(video_id, languages):
 def get_transcript():
     video_id = request.args.get('video_id')
     languages = request.args.get('languages')
+    api_key = request.headers.get('X-API-Key')
     
     if not video_id:
         return jsonify({
             "success": False,
             "error": "Missing video_id parameter"
         }), 400
+    
+    if not api_key:
+        return jsonify({
+            "success": False,
+            "error": "Missing API key in X-API-Key header"
+        }), 400
         
-    result = get_transcript_safely(video_id, languages)
+    result = get_transcript_safely(video_id, languages, api_key)
     return jsonify(result)
 
 @app.route('/api/query', methods=['POST'])
 def query_transcript():
     try:
         data = request.get_json()
+        api_key = request.headers.get('X-API-Key')
+        
         if not data or 'query' not in data:
             return jsonify({
                 "success": False,
                 "error": "Missing query in request body"
             }), 400
+        
+        if not api_key:
+            return jsonify({
+                "success": False,
+                "error": "Missing API key in X-API-Key header"
+            }), 400
 
         user_query = data['query']
-        relevant_chunks = get_relevant_transcript_chunks(user_query)
-        response_data = get_ai_response(user_query, relevant_chunks)
+        relevant_chunks = get_relevant_transcript_chunks(user_query, api_key)
+        response_data = get_ai_response(user_query, relevant_chunks, api_key)
         
         return jsonify({
             "success": True,
