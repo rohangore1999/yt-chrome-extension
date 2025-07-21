@@ -10,12 +10,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Key, Youtube, Sparkles, Shield, Zap } from "lucide-react";
+import { Key, Youtube, Sparkles, Eye, EyeOff, Shield, Zap } from "lucide-react";
 import "./ApiKeyScreen.css";
 
 export function ApiKeyScreen({ onApiKeySubmit }) {
   const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  const toggleApiKeyVisibility = () => {
+    setShowApiKey(!showApiKey);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -56,17 +61,23 @@ export function ApiKeyScreen({ onApiKeySubmit }) {
                 <Shield className="label-icon" />
                 Gemini API Key
               </Label>
+
               <div className="input-wrapper">
                 <Input
                   id="apiKey"
-                  type="password"
+                  type={showApiKey ? "text" : "password"}
                   placeholder="Enter your Gemini API key..."
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   className="api-input"
                 />
-                <div className="input-icon">
-                  <Sparkles className="sparkles-icon" />
+
+                <div className="input-icon" onClick={toggleApiKeyVisibility}>
+                  {showApiKey ? (
+                    <Eye className="sparkles-icon" />
+                  ) : (
+                    <EyeOff className="sparkles-icon" />
+                  )}
                 </div>
               </div>
             </div>
@@ -93,7 +104,6 @@ export function ApiKeyScreen({ onApiKeySubmit }) {
 
           {/* Enhanced Features Section */}
           <div className="features-section">
-
             <div className="help-section">
               <Badge variant="secondary" className="help-badge">
                 New to Gemini?
