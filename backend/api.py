@@ -470,6 +470,106 @@ def get_transcript():
         }), 400
         
     result = get_transcript_safely(video_id, languages, api_key)
+    
+    # Generate quick questions if transcript was successfully processed
+    if result.get('success') and result.get('data'):
+        quick_questions = []
+        try:
+            # Get relevant chunks from vector database for question generation
+            broad_query = "main topics discussed content overview summary"
+            relevant_chunks = get_relevant_transcript_chunks(broad_query, api_key)
+            
+            if relevant_chunks:
+                # Configure Gemini for question generation
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel('gemini-2.5-pro')
+                
+                # Format chunks for context
+                formatted_chunks = []
+                for chunk in relevant_chunks:
+                    timestamp = chunk.metadata.get('start_time', 0)
+                    translated_text = chunk.page_content
+                    
+                    formatted_chunks.append(f"""
+                    [{format_timestamp(timestamp)}]
+                    Content: {translated_text}
+                    """)
+                
+                # Create prompt for generating quick questions
+                questions_prompt = f"""
+                You are an expert content analyzer who creates engaging questions based on video content.
+                
+                Based on the provided video transcript content, generate exactly 3 quick questions that:
+                1. Cover different aspects/topics of the video
+                2. Are interesting and engaging for viewers
+                3. Help users understand the main content
+                4. Are specific enough to be answerable from the video
+                5. Vary in complexity (some simple, some deeper)
+                
+                IMPORTANT: 
+                - Return ONLY a list of exactly 3 questions
+                - Each question should be a string
+                - Do not include any other text, explanations, or formatting
+                - The response should be valid list syntax
+                
+                Example format:
+                ["Question 1?", "Question 2?", "Question 3?"]
+                
+                Available Video Content:
+                {chr(10).join(formatted_chunks)}
+                
+                Generate exactly 3 diverse, engaging questions about this video content:
+                """
+                
+                # Generate questions using Gemini
+                questions_response = model.generate_content(questions_prompt)
+                
+                try:
+                    # Parse the response as a list
+                    import ast
+                    questions_text = questions_response.text.strip()
+                    
+                    # Remove any markdown formatting if present
+                    if questions_text.startswith('```') and questions_text.endswith('```'):
+                        lines = questions_text.split('\n')
+                        questions_text = '\n'.join(lines[1:-1])
+                    
+                    # Safely evaluate the list
+                    questions_list = ast.literal_eval(questions_text)
+                    
+                    # Validate the result
+                    if isinstance(questions_list, list):
+                        # Ensure we have at most 3 questions
+                        if len(questions_list) > 3:
+                            questions_list = questions_list[:3]
+                        
+                        # Ensure all items are strings
+                        quick_questions = [str(q).strip() for q in questions_list if str(q).strip()]
+                        
+                except (ValueError, SyntaxError) as e:
+                    # Fallback: try to extract questions manually if parsing fails
+                    response_text = questions_response.text
+                    
+                    # Try to find questions (sentences ending with ?)
+                    import re
+                    questions = re.findall(r'"([^"]*\?)"', response_text)
+                    
+                    if not questions:
+                        # Alternative pattern for questions without quotes
+                        questions = re.findall(r'([^.!?]*\?)', response_text)
+                        questions = [q.strip() for q in questions if len(q.strip()) > 10]
+                    
+                    # Limit to 3 questions
+                    quick_questions = questions[:3]
+                    
+        except Exception as e:
+            print(f"Error generating quick questions: {str(e)}")
+            # Continue without questions if generation fails
+            quick_questions = []
+        
+        # Add quick questions to the result
+        result['quick-questions'] = quick_questions
+    
     return jsonify(result)
 
 @app.route('/api/query', methods=['POST'])

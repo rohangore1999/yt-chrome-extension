@@ -7,7 +7,7 @@ import {
   Youtube,
   Send,
   Settings,
-  MessageCircle,
+  UserCircle,
   Bot,
   Sparkles,
   KeyRound,
@@ -23,15 +23,6 @@ import {
 import MarkdownResponse from "./MarkdownResponse";
 import "./Popup.css";
 
-const SUGGESTED_QUESTIONS = [
-  "What is this video about?",
-  "Summarize the key points",
-  "What are the main takeaways?",
-  "Explain the most important concept",
-  "What tools or resources are mentioned?",
-  "Can you break down the tutorial steps?",
-];
-
 const Popup = ({ onApiKeyChange }) => {
   const [messages, setMessages] = useState([
     {
@@ -44,17 +35,19 @@ const Popup = ({ onApiKeyChange }) => {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isTranscriptLoading, setIsTranscriptLoading] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(true);
   const [videoId, setVideoId] = useState("");
-  const [videoTitle, setVideoTitle] = useState("YouTube Video");
   const [videoUrl, setVideoUrl] = useState("");
+  const [quickQuestions, setQuickQuestions] = useState([]);
 
   const scrollAreaRef = useRef(null);
   const inputRef = useRef(null);
 
   useEffect(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+    if (scrollAreaRef.current && messages.at(-1).isUser) {
+      scrollAreaRef.current.scrollTo({
+        top: scrollAreaRef.current.scrollHeight,
+        behavior: "smooth",
+      });
     }
   }, [messages]);
 
@@ -72,7 +65,6 @@ const Popup = ({ onApiKeyChange }) => {
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
     setIsLoading(true);
-    setShowSuggestions(false);
 
     try {
       const response = await queryTranscript(textToSend);
@@ -156,7 +148,7 @@ const Popup = ({ onApiKeyChange }) => {
             timestamp: new Date(),
           },
         ]);
-        setShowSuggestions(true);
+        setQuickQuestions(transcript["quick-questions"]);
       } else {
         setMessages([
           {
@@ -281,6 +273,36 @@ const Popup = ({ onApiKeyChange }) => {
       {/* Messages */}
       <div className="messages-container" ref={scrollAreaRef}>
         <div className="messages-list">
+          {/* Suggested Questions */}
+          {quickQuestions && (
+            <div className="suggestions-section">
+              <div className="suggestions-header">
+                <Badge variant="secondary" className="suggestions-badge">
+                  <Sparkles className="suggestions-icon" />
+                  Quick Questions
+                </Badge>
+              </div>
+
+              <div className="suggestions-grid">
+                {quickQuestions.map((suggestion, index) => (
+                  <Button
+                    key={index}
+                    variant="outline"
+                    size="sm"
+                    className="suggestion-button"
+                    onClick={() => handleSuggestionClick(suggestion)}
+                    disabled={isLoading}
+                  >
+                    <div className="suggestion-content">
+                      <div className="suggestion-dot"></div>
+                      <span className="suggestion-text">{suggestion}</span>
+                    </div>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {messages.map((message) => (
             <div
               key={message.id}
@@ -321,40 +343,11 @@ const Popup = ({ onApiKeyChange }) => {
 
               {message.isUser && (
                 <div className="message-avatar user-avatar">
-                  <MessageCircle className="avatar-icon" />
+                  <UserCircle className="avatar-icon" />
                 </div>
               )}
             </div>
           ))}
-
-          {/* Suggested Questions */}
-          {showSuggestions && messages.length === 1 && (
-            <div className="suggestions-section">
-              <div className="suggestions-header">
-                <Badge variant="secondary" className="suggestions-badge">
-                  <Sparkles className="suggestions-icon" />
-                  Quick Questions
-                </Badge>
-              </div>
-              <div className="suggestions-grid">
-                {SUGGESTED_QUESTIONS.map((suggestion, index) => (
-                  <Button
-                    key={index}
-                    variant="outline"
-                    size="sm"
-                    className="suggestion-button"
-                    onClick={() => handleSuggestionClick(suggestion)}
-                    disabled={isLoading}
-                  >
-                    <div className="suggestion-content">
-                      <div className="suggestion-dot"></div>
-                      <span className="suggestion-text">{suggestion}</span>
-                    </div>
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {isLoading && (
             <div className="loading-message">
@@ -390,13 +383,6 @@ const Popup = ({ onApiKeyChange }) => {
             <div className="button-glow"></div>
             <Send className="send-icon" />
           </Button>
-        </div>
-
-        <div className="input-hint">
-          <span>Press Enter to send</span>
-          {inputValue.length > 0 && (
-            <span className="character-count">{inputValue.length}/500</span>
-          )}
         </div>
       </div>
     </div>

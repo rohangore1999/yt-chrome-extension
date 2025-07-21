@@ -1,11 +1,12 @@
 /* Popup Container */
 .popup-container {
   width: 400px;
-  height: 600px;
+  height: 100vh;
   background: var(--background);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  scroll-behavior: smooth;
 }
 
 /* Header Section */
