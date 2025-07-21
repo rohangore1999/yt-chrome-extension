@@ -1247,20 +1247,20 @@ export const queryTranscript = async (query) => {
     await new Promise((resolve) => setTimeout(resolve, 5000));
     return {
       response:
-        'Of course. Here is a summary of the video content.\n\n### Overview\nThis video introduces and reviews Amazon\'s new AI-powered IDE, "Kira" (referred to as Curo). It is a fork of VS Code that competes with other AI coding assistants like Cursor and Copilot. The video highlights its unique "spec-driven development" approach, which focuses on structured planning before code generation.\n\n### Details\n*   Amazon has released a new AI IDE called Kira, a VS Code fork designed to compete with other AI editors. [00:01]\n*   It is powered by the Claude Sonnet 4.0 model and utilizes an approach called "spec-driven development." [00:15]\n*   The video mentions recent industry news, such as the failed acquisition of the VS Code fork "Windsor" and other companies competing for developer tools. [00:55]\n*   Amazon is a significant investor in Anthropic, the company behind the Claude AI model that powers Kira. [01:42]\n*   First impressions are that the UI looks nice, but the service felt slow and overloaded at the time of recording. [02:12]\n*   Kira\'s unique workflow encourages users to start with a `requirements.md` file to define the user story and acceptance conditions. [02:32]\n*   Following the requirements, a design document is created to outline the implementation plan, component structure, and testing strategy. [02:46]\n*   This structured process is described as feeling slower but is a more "sane approach" for serious or enterprise-level projects. [03:13]\n*   Kira is currently closed source and only uses Claude, but there are plans to offer other models in the future. [03:26]\n*   The video includes a sponsorship segment for the learning platform Brilliant.org. [03:36]',
+        "### Physical Transformation Challenge\n\n*   While working a job spraying for cockroaches and weighing 300 pounds, David Goggins was inspired by a TV show about Navy SEALs to change his life. [05:32]\n*   After being laughed at by seven other recruiters, one finally told him to come into the office. [06:05]\n*   The recruiter told him, \"You're fat and you're black,\" and stated that he had to lose 106 pounds. (The video incorrectly states 160 pounds at [06:36] but the required weight for his height meant a 106-pound loss).\n*   Goggins was given a strict deadline to lose the weight: less than three months, because he was approaching the age limit for enlistment. [06:42]\n*   He successfully met the challenge, returning three months later having lost the required weight. [06:48]",
       success: true,
       timestamps: [
         {
-          text: "free for 30 days by visiting brilliant.org/fireship or scan the QR code on screen to get 20% off an ...",
-          time: "03:54",
-        },
-        {
-          text: "Yesterday, out of nowhere, Amazon released its own AI IDE named Kira. Yet another VS Code fork that ...",
+          text: "retired chief petty officer Dave Goggins is well known for his physical and mental toughness and for...",
           time: "00:00",
         },
         {
-          text: "weren't bad enough, now here comes Curo. It's also a VS Code fork with many similar features and bas...",
-          time: "01:59",
+          text: "day so I like to thank the VFW very much for giving me this this award it means more than meeting an...",
+          time: "03:30",
+        },
+        {
+          text: "of Honor winner I went through hell week with all these guys real heroes I am NOT a hero I served wi...",
+          time: "07:31",
         },
       ],
     };

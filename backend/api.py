@@ -1,156 +1,25 @@
-from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
-from youtube_transcript_api.proxies import GenericProxyConfig
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_core.documents import Document
-from langchain_qdrant import QdrantVectorStore
-from deep_translator import GoogleTranslator
-from langdetect import detect
-import google.generativeai as genai
 from dotenv import load_dotenv
 import os
-import sys
-from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import UnexpectedResponse
-from qdrant_client.models import Distance, VectorParams
 
-# Set console encoding to UTF-8
-sys.stdout.reconfigure(encoding='utf-8')
+# Import utility modules
+from utils import setup_console_encoding
+from youtube_utils import create_youtube_transcript_api, get_transcript_safely
+from vector_store_utils import get_relevant_transcript_chunks, store_documents_in_vector_db
+from ai_utils import get_ai_response, generate_quick_questions
 
 # Load environment variables
 load_dotenv()
 
-# Configure Google API - remove default key setup
-# GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-# if not GOOGLE_API_KEY:
-#     raise ValueError("GOOGLE_API_KEY not found in environment variables")
+# Set console encoding to UTF-8
+setup_console_encoding()
 
-# genai.configure(api_key=GOOGLE_API_KEY)
-translator = GoogleTranslator(source='auto', target='en')
-
-def create_youtube_transcript_api():
-    """
-    Create YouTubeTranscriptApi instance with optional proxy configuration.
-    
-    This function helps bypass YouTube IP bans by using proxy servers.
-    
-    Environment Variables for Proxy Configuration:
-    - PROXY_HTTP_URL: HTTP proxy URL (format: http://username:password@proxy.example.com:port)
-    - PROXY_HTTPS_URL: HTTPS proxy URL (format: https://username:password@proxy.example.com:port)
-    - PROXY_URL: Single proxy URL to use for both HTTP and HTTPS (recommended for most cases)
-    
-    Examples:
-    - PROXY_URL=http://user:pass@proxy.example.com:8080 (uses same proxy for both HTTP and HTTPS)
-    - PROXY_HTTP_URL=http://user:pass@proxy.example.com:8080
-    - PROXY_HTTPS_URL=https://user:pass@proxy.example.com:8080
-    
-    Popular proxy services: ProxyMesh, Bright Data, Smartproxy, etc.
-    For best results, use services that automatically rotate proxy IPs.
-    
-    Note: Many proxies only support HTTP protocol. In this case, use PROXY_URL or set both
-    PROXY_HTTP_URL and PROXY_HTTPS_URL to the same HTTP URL.
-    """
-    proxy_url = os.getenv('PROXY_URL')
-    proxy_http_url = os.getenv('PROXY_HTTP_URL')
-    proxy_https_url = os.getenv('PROXY_HTTPS_URL')
-    
-    # If PROXY_URL is set, use it for both HTTP and HTTPS
-    if proxy_url:
-        proxy_http_url = proxy_url
-        proxy_https_url = proxy_url
-        print(f"Using single proxy URL for both HTTP and HTTPS: {proxy_url.split('@')[1] if '@' in proxy_url else proxy_url}")
-    
-    if proxy_http_url or proxy_https_url:
-        print(f"Configuring YouTube Transcript API with proxy:")
-        if proxy_http_url:
-            # Hide password in logs for security
-            safe_http_url = proxy_http_url.split('@')[1] if '@' in proxy_http_url else proxy_http_url
-            print(f"  HTTP Proxy: {safe_http_url}")
-        if proxy_https_url:
-            # Hide password in logs for security
-            safe_https_url = proxy_https_url.split('@')[1] if '@' in proxy_https_url else proxy_https_url
-            print(f"  HTTPS Proxy: {safe_https_url}")
-        
-        try:
-            proxy_config = GenericProxyConfig(
-                http_url=proxy_http_url,
-                https_url=proxy_https_url,
-            )
-            print("Proxy configuration successful.")
-            return YouTubeTranscriptApi(proxy_config=proxy_config)
-        except Exception as e:
-            error_msg = str(e).lower()
-            print(f"Warning: Failed to configure proxy: {str(e)}")
-            
-            # If it's an HTTPS proxy error and we have HTTP proxy, try using HTTP for both
-            if ("https" in error_msg or "ssl" in error_msg or "wrong_version_number" in error_msg) and proxy_http_url:
-                print("Detected HTTPS proxy issue. Trying HTTP proxy for both HTTP and HTTPS connections...")
-                try:
-                    fallback_config = GenericProxyConfig(
-                        http_url=proxy_http_url,
-                        https_url=proxy_http_url,  # Use HTTP proxy for HTTPS as well
-                    )
-                    print("Fallback proxy configuration successful.")
-                    return YouTubeTranscriptApi(proxy_config=fallback_config)
-                except Exception as fallback_e:
-                    print(f"Fallback proxy configuration also failed: {str(fallback_e)}")
-            
-            print("Falling back to direct connection...")
-            return YouTubeTranscriptApi()
-    else:
-        print("No proxy configuration found. Using direct connection.")
-        return YouTubeTranscriptApi()
-
+# Initialize YouTube Transcript API
 ytt_api = create_youtube_transcript_api()
 
-# Initialize Qdrant client
-qdrant_client = QdrantClient(url="http://localhost:6333")
-
-def ensure_collection_exists(collection_name: str, embedding_size: int = 768, recreate: bool = True):
-    """
-    Ensures that the Qdrant collection exists, creates it if it doesn't.
-    If recreate is True, it will delete and recreate the collection.
-    """
-    try:
-        # Check if collection exists
-        collection_exists = False
-        try:
-            collection_info = qdrant_client.get_collection(collection_name)
-            collection_exists = True
-        except UnexpectedResponse:
-            collection_exists = False
-
-        # Handle recreation if needed
-        if collection_exists and recreate:
-            print(f"Deleting existing collection {collection_name}")
-            qdrant_client.delete_collection(collection_name)
-            collection_exists = False
-        
-        # Create collection if it doesn't exist
-        if not collection_exists:
-            qdrant_client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(
-                    size=embedding_size,
-                    distance=Distance.COSINE
-                )
-            )
-            print(f"Successfully created collection: {collection_name}")
-        else:
-            print(f"Using existing collection: {collection_name}")
-        
-        return True
-            
-    except Exception as e:
-        print(f"Error in ensure_collection_exists: {str(e)}")
-        return False
-
-# Set console encoding to UTF-8
-sys.stdout.reconfigure(encoding='utf-8')
-
+# Initialize Flask app
 app = Flask(__name__)
 CORS(app)
 
@@ -161,298 +30,11 @@ text_splitter = RecursiveCharacterTextSplitter(
     length_function=len,
 )
 
-def get_embeddings(api_key):
-    """
-    Initialize Gemini embeddings with the provided API key
-    """
-    return GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        google_api_key=api_key,
-    )
-
-def get_vector_store(api_key, recreate: bool = True):
-    """
-    Get or create vector store for the collection.
-    If recreate is True, it will create a fresh collection.
-    """
-    try:
-        # Try to ensure collection exists
-        if not ensure_collection_exists("yt-rag", recreate=recreate):
-            raise Exception("Failed to create or verify collection")
-        
-        # Initialize vector store with provided API key
-        embeddings = get_embeddings(api_key)
-        return QdrantVectorStore(
-            client=qdrant_client,
-            collection_name="yt-rag",
-            embedding=embeddings,
-        )
-    except Exception as e:
-        print(f"Error in get_vector_store: {str(e)}")
-        raise
-
-def get_relevant_transcript_chunks(query: str, api_key: str):
-    """
-    Retrieve semantically relevant chunks of the video transcript based on the query.
-    """
-    try:
-        # Use existing vector store (transcript should already be processed)
-        vector_store = get_vector_store(api_key, recreate=False)
-        return vector_store.similarity_search(query=query)
-    except Exception as e:
-        print(f"Error during similarity search: {e}")
-        # Return empty list if no vector store exists yet
-        return []
-
-def format_timestamp(seconds):
-    """
-    Format timestamp into clickable format with hours, minutes, and seconds
-    """
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    
-    if hours > 0:
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-    return f"{minutes:02d}:{secs:02d}"
-
-def get_ai_response(query: str, chunks, api_key: str):
-    """
-    Get AI response based on the query and relevant transcript chunks using Gemini.
-    """
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-pro')
-    
-    # Format chunks to include translated text and timestamps
-    formatted_chunks = []
-    for chunk in chunks:
-        timestamp = chunk.metadata.get('start_time', 0)
-        duration = chunk.metadata.get('duration', 0)
-        translated_text = chunk.page_content
-        
-        formatted_chunks.append(f"""
-        [{format_timestamp(timestamp)}]
-        Content: {translated_text}
-        """)
-    
-    system_prompt = f"""
-    You are an expert content analyzer who helps users understand video content.
-    
-    When responding:
-    1. Structure your response with clear sections (e.g., ### Overview, ### Details)
-    2. Use bullet points for clarity
-    3. ALWAYS include timestamps in [MM:SS] format (not parentheses)
-    4. Keep responses concise and focused
-    5. Format timestamps consistently as [MM:SS] or [HH:MM:SS] for longer videos
-    6. Place timestamps at the end of each point in square brackets, like: [MM:SS]
-    7. Make sure each point has a unique and accurate timestamp
-    
-    Example format:
-    * This is a point about the video [12:34]
-    * Another important point from a different part [15:20]
-    
-    Available Context:
-    {formatted_chunks}
-
-    User Question: {query}
-    """
-
-    response = model.generate_content(system_prompt)
-    
-    # Process response to ensure timestamps are properly formatted
-    processed_response = response.text
-    
-    # Extract all timestamps from the response for the timestamps array
-    timestamp_pattern = r'\[(\d{2}:\d{2})\]'
-    found_timestamps = []
-    
-    for chunk in chunks:
-        timestamp = format_timestamp(chunk.metadata.get('start_time', 0))
-        text_preview = chunk.page_content[:100] + "..." if len(chunk.page_content) > 100 else chunk.page_content
-        found_timestamps.append({
-            "time": timestamp,
-            "text": text_preview
-        })
-    
-    # Return structured response with actual timestamps from chunks
-    return {
-        "content": processed_response,
-        "timestamps": found_timestamps
-    }
-
-def process_transcript_entries(transcript_data, video_id, detected_lang):
-    """
-    Process transcript entries to create optimized chunks with sliding window.
-    """
-    print(f"\n=== Processing Transcript Data ===")
-    print(f"Total transcript entries: {len(transcript_data)}")
-    print(f"Video ID: {video_id}")
-    print(f"Language: {detected_lang}")
-    
-    # First, combine all transcript entries into a single document with metadata
-    combined_entries = []
-    TARGET_CHUNK_SIZE = 2500
-    
-    for entry in transcript_data:
-        combined_entries.append({
-            'text': entry['text'],
-            'start_time': entry['start_time'],
-            'duration': entry['duration'],
-            'original_text': entry['original_text']
-        })
-    
-    print(f"Combined entries: {len(combined_entries)}")
-    
-    # Create documents with combined text and preserved metadata
-    docs = []
-    current_chunk = []
-    current_metadata = {
-        'start_time': 0,
-        'duration': 0,
-        'segments': [],
-        'video_id': video_id,
-        'detected_language': detected_lang
-    }
-    
-    for entry in combined_entries:
-        current_chunk.append(entry['text'])
-        
-        # Update metadata
-        if not current_metadata['segments']:
-            current_metadata['start_time'] = entry['start_time']
-        
-        current_metadata['duration'] += entry['duration']
-        current_metadata['segments'].append({
-            'text': entry['text'],
-            'original_text': entry['original_text'],
-            'start_time': entry['start_time'],
-            'duration': entry['duration']
-        })
-        
-        # Create a document when we have enough text
-        combined_text = ' '.join(current_chunk)
-        if len(combined_text) >= TARGET_CHUNK_SIZE:
-            docs.append(Document(
-                page_content=combined_text,
-                metadata=current_metadata.copy()
-            ))
-            print(f"Created chunk {len(docs)} with {len(current_metadata['segments'])} segments")
-            
-            # Reset for next chunk, keeping overlap
-            overlap_segments = current_metadata['segments'][-2:]  # Keep last 2 segments for overlap
-            current_chunk = [seg['text'] for seg in overlap_segments]
-            current_metadata = {
-                'start_time': overlap_segments[0]['start_time'],
-                'duration': sum(seg['duration'] for seg in overlap_segments),
-                'segments': overlap_segments,
-                'video_id': video_id,
-                'detected_language': detected_lang
-            }
-    
-    # Add the last chunk if it has content
-    if current_chunk:
-        docs.append(Document(
-            page_content=' '.join(current_chunk),
-            metadata=current_metadata.copy()
-        ))
-        print(f"Created final chunk {len(docs)} with {len(current_metadata['segments'])} segments")
-    
-    print(f"\nTotal chunks created: {len(docs)}")
-    print("=== Processing Complete ===\n")
-    return docs
-
-def get_transcript_safely(video_id, languages, api_key):
-    try:
-        print(f"\n=== Fetching Transcript ===")
-        print(f"Video ID: {video_id}")
-        transcript_list = ytt_api.list(video_id)
-        
-        # Initialize list to store transcript data
-        transcript_data = []
-        detected_lang = None
-        
-        for transcript in transcript_list:
-            data = transcript.fetch()
-            print(f"Fetched transcript with {len(data) if data else 0} entries")
-            
-            if data and not detected_lang:
-                try:
-                    detected_lang = detect(data[0].text)
-                    print(f"Detected language: {detected_lang}")
-                except Exception as e:
-                    print(f"Language detection error: {e}")
-                    detected_lang = 'unknown'
-            
-            for entry in data:
-                original_text = entry.text
-                if detected_lang == 'hi':
-                    try:
-                        processed_text = translator.translate(original_text)
-                        print("Translated text from Hindi to English")
-                    except Exception as e:
-                        print(f"Translation error: {e}")
-                        processed_text = original_text
-                else:
-                    processed_text = original_text
-                
-                transcript_data.append({
-                    'text': processed_text,
-                    'original_text': original_text,
-                    'start_time': entry.start,
-                    'duration': entry.duration,
-                    'detected_language': detected_lang
-                })
-        
-        if not transcript_data:
-            print("No transcript data found")
-            return {
-                'success': False,
-                'error': "No transcript data found"
-            }
-        
-        print(f"Total transcript entries collected: {len(transcript_data)}")
-        
-        # Process transcript data using sliding window approach
-        docs = process_transcript_entries(transcript_data, video_id, detected_lang)
-        
-        try:
-            print(f"\n=== Storing in Vector Database ===")
-            # Store documents in vector database immediately
-            vector_store = get_vector_store(api_key, recreate=True)
-            vector_store.add_documents(documents=docs)
-            print(f"Successfully stored {len(docs)} documents in vector database")
-            
-            return {
-                'success': True,
-                'data': transcript_data,
-                'chunks_processed': len(docs)
-            }
-            
-        except Exception as e:
-            print(f"Vector store error: {str(e)}")
-            # Return partial success if we at least got the transcript
-            return {
-                'success': True,
-                'data': transcript_data,
-                'chunks_processed': len(docs),
-                'warning': f"Failed to store in vector database: {str(e)}"
-            }
-        
-    except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable) as e:
-        print(f"YouTube transcript error: {str(e)}")
-        return {
-            'success': False,
-            'error': str(e)
-        }
-    except Exception as e:
-        print(f"Unexpected error: {str(e)}")
-        return {
-            'success': False,
-            'error': str(e)
-        }
-
 @app.route('/api/transcript', methods=['GET'])
 def get_transcript():
+    """
+    Extract transcript from YouTube video and process it for RAG system
+    """
     video_id = request.args.get('video_id')
     languages = request.args.get('languages')
     api_key = request.headers.get('X-API-Key')
@@ -469,111 +51,48 @@ def get_transcript():
             "error": "Missing API key in X-API-Key header"
         }), 400
         
-    result = get_transcript_safely(video_id, languages, api_key)
+    # Get transcript from YouTube
+    result = get_transcript_safely(video_id, languages, ytt_api)
+    
+    if not result.get('success'):
+        return jsonify(result)
+    
+    # Store documents in vector database
+    docs = result.get('docs', [])
+    if docs:
+        storage_success = store_documents_in_vector_db(docs, api_key)
+        if storage_success:
+            result['chunks_processed'] = len(docs)
+        else:
+            result['warning'] = "Failed to store in vector database"
+    
+    # Remove non-serializable docs from result before returning
+    if 'docs' in result:
+        del result['docs']
     
     # Generate quick questions if transcript was successfully processed
     if result.get('success') and result.get('data'):
-        quick_questions = []
         try:
             # Get relevant chunks from vector database for question generation
             broad_query = "main topics discussed content overview summary"
             relevant_chunks = get_relevant_transcript_chunks(broad_query, api_key)
             
-            if relevant_chunks:
-                # Configure Gemini for question generation
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-2.5-pro')
-                
-                # Format chunks for context
-                formatted_chunks = []
-                for chunk in relevant_chunks:
-                    timestamp = chunk.metadata.get('start_time', 0)
-                    translated_text = chunk.page_content
-                    
-                    formatted_chunks.append(f"""
-                    [{format_timestamp(timestamp)}]
-                    Content: {translated_text}
-                    """)
-                
-                # Create prompt for generating quick questions
-                questions_prompt = f"""
-                You are an expert content analyzer who creates engaging questions based on video content.
-                
-                Based on the provided video transcript content, generate exactly 3 quick questions that:
-                1. Cover different aspects/topics of the video
-                2. Are interesting and engaging for viewers
-                3. Help users understand the main content
-                4. Are specific enough to be answerable from the video
-                5. Vary in complexity (some simple, some deeper)
-                
-                IMPORTANT: 
-                - Return ONLY a list of exactly 3 questions
-                - Each question should be a string
-                - Do not include any other text, explanations, or formatting
-                - The response should be valid list syntax
-                
-                Example format:
-                ["Question 1?", "Question 2?", "Question 3?"]
-                
-                Available Video Content:
-                {chr(10).join(formatted_chunks)}
-                
-                Generate exactly 3 diverse, engaging questions about this video content:
-                """
-                
-                # Generate questions using Gemini
-                questions_response = model.generate_content(questions_prompt)
-                
-                try:
-                    # Parse the response as a list
-                    import ast
-                    questions_text = questions_response.text.strip()
-                    
-                    # Remove any markdown formatting if present
-                    if questions_text.startswith('```') and questions_text.endswith('```'):
-                        lines = questions_text.split('\n')
-                        questions_text = '\n'.join(lines[1:-1])
-                    
-                    # Safely evaluate the list
-                    questions_list = ast.literal_eval(questions_text)
-                    
-                    # Validate the result
-                    if isinstance(questions_list, list):
-                        # Ensure we have at most 3 questions
-                        if len(questions_list) > 3:
-                            questions_list = questions_list[:3]
-                        
-                        # Ensure all items are strings
-                        quick_questions = [str(q).strip() for q in questions_list if str(q).strip()]
-                        
-                except (ValueError, SyntaxError) as e:
-                    # Fallback: try to extract questions manually if parsing fails
-                    response_text = questions_response.text
-                    
-                    # Try to find questions (sentences ending with ?)
-                    import re
-                    questions = re.findall(r'"([^"]*\?)"', response_text)
-                    
-                    if not questions:
-                        # Alternative pattern for questions without quotes
-                        questions = re.findall(r'([^.!?]*\?)', response_text)
-                        questions = [q.strip() for q in questions if len(q.strip()) > 10]
-                    
-                    # Limit to 3 questions
-                    quick_questions = questions[:3]
-                    
+            # Generate questions using AI
+            quick_questions = generate_quick_questions(relevant_chunks, api_key)
+            result['quick-questions'] = quick_questions
+            
         except Exception as e:
             print(f"Error generating quick questions: {str(e)}")
             # Continue without questions if generation fails
-            quick_questions = []
-        
-        # Add quick questions to the result
-        result['quick-questions'] = quick_questions
+            result['quick-questions'] = []
     
     return jsonify(result)
 
 @app.route('/api/query', methods=['POST'])
 def query_transcript():
+    """
+    Query the processed transcript using RAG system
+    """
     try:
         data = request.get_json()
         api_key = request.headers.get('X-API-Key')
@@ -591,7 +110,11 @@ def query_transcript():
             }), 400
 
         user_query = data['query']
+        
+        # Get relevant chunks from vector database
         relevant_chunks = get_relevant_transcript_chunks(user_query, api_key)
+        
+        # Generate AI response
         response_data = get_ai_response(user_query, relevant_chunks, api_key)
         
         return jsonify({

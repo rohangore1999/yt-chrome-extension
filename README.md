@@ -1,6 +1,6 @@
 # YouTube RAG Assistant - Chrome Extension
 
-A sophisticated Chrome extension that leverages **Retrieval Augmented Generation (RAG)** to enable intelligent conversations with YouTube video content. The system combines modern web technologies, AI/ML models, and advanced vector databases to provide context-aware responses with precise timestamp navigation.
+A sophisticated Chrome extension that leverages **Retrieval Augmented Generation (RAG)** to enable intelligent conversations with YouTube video content. The system combines modern web technologies, AI/ML models, and advanced vector databases to provide context-aware responses with precise timestamp navigation and automatic question generation.
 
 ## 🏗️ Architecture Overview
 
@@ -10,6 +10,7 @@ A sophisticated Chrome extension that leverages **Retrieval Augmented Generation
 - **Event-Driven Communication**: Chrome extension APIs for inter-component messaging
 - **RAG (Retrieval Augmented Generation)**: Vector similarity search + Large Language Model
 - **Real-time Processing**: Streaming transcript processing with sliding window chunking
+- **Modular Backend Design**: Specialized modules for different functionalities
 
 ### **Technology Stack**
 
@@ -25,15 +26,165 @@ A sophisticated Chrome extension that leverages **Retrieval Augmented Generation
 #### **Backend Technologies**
 
 - **Flask** - Lightweight Python web framework
-- **Google Generative AI (Gemini)** - Large Language Model integration
+- **Google Generative AI (Gemini 2.5 Pro)** - Latest large language model
 - **LangChain** - AI application framework
 - **Qdrant Vector Database** - High-performance vector similarity search
-- **YouTube Transcript API** - Video content extraction
-- **Deep Translator** - Multi-language support
+- **YouTube Transcript API** - Video content extraction with proxy support
+- **Deep Translator** - Multi-language support (Hindi to English)
+- **Language Detection** - Automatic content language identification
 
 ## 🔧 Detailed Technical Implementation
 
-### **1. Chrome Extension Architecture**
+### **1. Modular Backend Architecture**
+
+#### **Core Modules Structure**
+
+```python
+backend/
+├── api.py                    # Flask API endpoints and routing
+├── ai_utils.py              # AI response generation and quick questions
+├── vector_store_utils.py    # Qdrant vector database operations
+├── youtube_utils.py         # YouTube transcript processing & translation
+├── utils.py                 # Helper utilities and formatting
+├── retrieval.py             # RAG retrieval functionality
+├── requirements.txt         # Python dependencies
+└── docker-compose.yml       # Vector database container
+```
+
+**Technical Benefits:**
+
+- **Separation of Concerns**: Each module handles specific functionality
+- **Maintainability**: Clear code organization and modularity
+- **Scalability**: Easy to extend and modify individual components
+- **Testing**: Isolated modules for better unit testing
+- **Reusability**: Modular functions can be reused across components
+
+#### **API Endpoints**
+
+```python
+# Main Flask Application (api.py)
+@app.route('/api/transcript', methods=['GET'])
+def get_transcript():
+    # Process YouTube transcript with automatic question generation
+
+@app.route('/api/query', methods=['POST'])
+def query_transcript():
+    # RAG-based question answering with timestamp links
+```
+
+**Technical Features:**
+
+- **RESTful Design**: Clean endpoint structure
+- **Error Handling**: Comprehensive exception management
+- **CORS Support**: Cross-origin request handling
+- **API Key Authentication**: Secure header-based auth
+
+### **2. Advanced AI Response Generation**
+
+#### **Enhanced AI Utils Module**
+
+```python
+# ai_utils.py - Core AI functionality
+def get_ai_response(query: str, chunks, api_key: str):
+    """Generate contextual responses with timestamps"""
+    # Direct response formatting without conversational preambles
+    # Structured markdown output with clickable timestamps
+    # Enhanced prompt engineering for consistency
+
+def generate_quick_questions(relevant_chunks, api_key: str):
+    """Auto-generate 3 engaging questions about video content"""
+    # Content analysis for question diversity
+    # Intelligent topic extraction
+    # Fallback parsing for robust question generation
+```
+
+**Technical Improvements:**
+
+- **Direct Responses**: Eliminated conversational preambles ("Of course", "Sure", etc.)
+- **Quick Questions**: Automatic generation of 3 engaging video-specific questions
+- **Enhanced Prompting**: Better structured system prompts for consistency
+- **Timestamp Integration**: Seamless embedding of clickable timestamps
+- **Error Recovery**: Robust parsing with multiple fallback strategies
+
+#### **Quick Questions Feature**
+
+```python
+# Automatic question generation workflow
+def generate_quick_questions(relevant_chunks, api_key: str):
+    # 1. Analyze video content for main topics
+    # 2. Generate 3 diverse, engaging questions
+    # 3. Ensure questions are answerable from video content
+    # 4. Return as structured list for UI consumption
+```
+
+**Benefits:**
+
+- **User Engagement**: Provides starting points for exploration
+- **Content Discovery**: Highlights key video topics
+- **Enhanced UX**: Reduces cognitive load for users
+- **Intelligent Analysis**: AI-powered content understanding
+
+### **3. Enhanced YouTube Processing**
+
+#### **Advanced Transcript Processing**
+
+```python
+# youtube_utils.py - Comprehensive video processing
+def create_youtube_transcript_api():
+    """Enhanced proxy support for YouTube API access"""
+    # Multiple proxy configuration options
+    # Automatic fallback mechanisms
+    # HTTPS/HTTP proxy handling
+
+def get_transcript_safely(video_id, languages, ytt_api):
+    """Safe transcript extraction with translation"""
+    # Language detection with langdetect
+    # Hindi to English translation
+    # Error handling and recovery
+
+def process_transcript_entries(transcript_data, video_id, detected_lang):
+    """Optimized chunking with sliding window approach"""
+    # 2500 character chunks with 25% overlap
+    # Metadata preservation for timestamps
+    # Context continuity across chunks
+```
+
+**Technical Features:**
+
+- **Proxy Integration**: Advanced proxy support for geo-restrictions
+- **Language Detection**: Automatic identification of content language
+- **Translation Pipeline**: Real-time Hindi to English translation
+- **Sliding Window Chunking**: Optimal context preservation
+- **Metadata Preservation**: Comprehensive timestamp and video data retention
+
+### **4. Vector Database Management**
+
+#### **Qdrant Integration Module**
+
+```python
+# vector_store_utils.py - Database operations
+def ensure_collection_exists(collection_name: str, embedding_size: int = 768):
+    """Smart collection management with recreation options"""
+
+def get_vector_store(api_key, recreate: bool = True):
+    """Dynamic vector store initialization"""
+
+def store_documents_in_vector_db(docs, api_key):
+    """Efficient document storage with batch processing"""
+
+def get_relevant_transcript_chunks(query: str, api_key: str):
+    """Semantic similarity search for relevant content"""
+```
+
+**Technical Improvements:**
+
+- **Dynamic Collections**: Automatic collection creation and management
+- **Recreate Options**: Fresh collections for new videos
+- **Error Recovery**: Graceful handling of database connection issues
+- **Cosine Similarity**: Optimized vector similarity calculations
+- **Batch Operations**: Efficient document storage and retrieval
+
+### **5. Chrome Extension Architecture**
 
 #### **Manifest V3 Configuration**
 
@@ -81,7 +232,7 @@ window.parent.postMessage({ action: "closePopup" }, "*");
 - **Iframe Sandboxing**: Isolated popup rendering
 - **DOM Manipulation**: YouTube video element control
 
-### **2. Frontend React Architecture**
+### **6. Frontend React Architecture**
 
 #### **Component Hierarchy & Design Patterns**
 
@@ -99,270 +250,13 @@ App.jsx (Root)
 │           └── Badge.jsx (Status Indicators)
 ```
 
-#### **State Management Approach**
+#### **Enhanced Features**
 
-```javascript
-// Local State with Hooks
-const [messages, setMessages] = useState([]);
-const [isLoading, setIsLoading] = useState(false);
-
-// Chrome Storage Integration
-chrome.storage.sync.get(["videoId"], (result) => {
-  if (result.videoId) {
-    setVideoId(result.videoId);
-    fetchTranscript(result.videoId);
-  }
-});
-
-// Storage Change Listeners
-chrome.storage.onChanged.addListener(handleStorageChange);
-```
-
-**Technical Patterns:**
-
-- **React Hooks**: useState, useEffect, useRef for state management
-- **Controlled Components**: Form inputs with validation
-- **Event Delegation**: Efficient DOM event handling
-- **Component Composition**: Radix UI slot pattern for flexibility
-- **CSS-in-JS**: Scoped styling with CSS modules approach
-
-#### **Advanced UI Features**
-
-```javascript
-// Auto-scrolling Chat
-useEffect(() => {
-  if (scrollAreaRef.current) {
-    scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
-  }
-}, [messages]);
-
-// Timestamp Link Generation
-const TimestampLink = ({ time }) => {
-  const seconds = convertTimestampToSeconds(time);
-  return (
-    <a
-      href="#"
-      onClick={(e) => {
-        e.preventDefault();
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: "seekToTimestamp",
-          seconds: seconds,
-        });
-      }}
-    >
-      [{time}]
-    </a>
-  );
-};
-```
-
-### **3. Backend API Architecture**
-
-#### **Flask Application Structure**
-
-```python
-app = Flask(__name__)
-CORS(app)  # Cross-Origin Resource Sharing
-
-@app.route('/api/transcript', methods=['GET'])
-def get_transcript():
-    # Video transcript retrieval and processing
-
-@app.route('/api/query', methods=['POST'])
-def query_transcript():
-    # RAG-based question answering
-```
-
-**Technical Implementation:**
-
-- **RESTful API Design**: Resource-based endpoints
-- **CORS Configuration**: Cross-origin request handling
-- **Error Handling**: Comprehensive exception management
-- **Request Validation**: Input sanitization and validation
-- **Header-based Authentication**: API key in X-API-Key header
-
-#### **YouTube Transcript Processing**
-
-```python
-def create_youtube_transcript_api():
-    """
-    Proxy configuration for IP ban circumvention
-    """
-    proxy_config = GenericProxyConfig(
-        http_url=proxy_http_url,
-        https_url=proxy_https_url,
-    )
-    return YouTubeTranscriptApi(proxy_config=proxy_config)
-
-def get_transcript_safely(video_id, languages, api_key):
-    # Language detection with langdetect
-    detected_lang = detect(data[0].text)
-
-    # Translation with Deep Translator
-    if detected_lang == 'hi':
-        processed_text = translator.translate(original_text)
-
-    return transcript_data
-```
-
-**Technical Features:**
-
-- **Proxy Support**: HTTP/HTTPS proxy configuration for geo-restrictions
-- **Language Detection**: Automatic language identification
-- **Translation Pipeline**: Hindi to English translation
-- **Error Recovery**: Fallback mechanisms for failed requests
-- **Request Cancellation**: AbortController for race condition prevention
-
-### **4. RAG (Retrieval Augmented Generation) Implementation**
-
-#### **Vector Database Architecture**
-
-```python
-# Qdrant Vector Store Configuration
-qdrant_client = QdrantClient(url="http://localhost:6333")
-
-def ensure_collection_exists(collection_name: str, embedding_size: int = 768):
-    qdrant_client.create_collection(
-        collection_name=collection_name,
-        vectors_config=VectorParams(
-            size=embedding_size,
-            distance=Distance.COSINE
-        )
-    )
-```
-
-**Technical Approach:**
-
-- **Vector Similarity Search**: Cosine distance for semantic matching
-- **Embedding Model**: Google Gemini embedding-001 (768 dimensions)
-- **Collection Management**: Dynamic collection creation and validation
-- **Persistence**: Docker-based Qdrant deployment
-
-#### **Document Chunking Strategy**
-
-```python
-# Sliding Window Approach
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=2500,        # Optimal context window
-    chunk_overlap=625,      # 25% overlap for continuity
-    length_function=len,
-)
-
-def process_transcript_entries(transcript_data, video_id, detected_lang):
-    # Combine entries with metadata preservation
-    for entry in combined_entries:
-        current_metadata = {
-            'start_time': entry['start_time'],
-            'duration': entry['duration'],
-            'video_id': video_id,
-            'detected_language': detected_lang,
-            'segments': []  # Granular timestamp tracking
-        }
-```
-
-**Technical Features:**
-
-- **Sliding Window Chunking**: Maintains context across chunk boundaries
-- **Metadata Preservation**: Timestamp and video information retention
-- **Adaptive Segmentation**: Content-aware chunk boundaries
-- **Overlap Strategy**: Prevents information loss at boundaries
-
-#### **Semantic Search Implementation**
-
-```python
-def get_relevant_transcript_chunks(query: str, api_key: str):
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        google_api_key=api_key,
-    )
-
-    vector_store = QdrantVectorStore(
-        client=qdrant_client,
-        collection_name="yt-rag",
-        embedding=embeddings,
-    )
-
-    return vector_store.similarity_search(query=query)
-```
-
-### **5. AI Integration & Prompt Engineering**
-
-#### **Google Gemini Integration**
-
-```python
-def get_ai_response(query: str, chunks, api_key: str):
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-pro')
-
-    # Context formatting with timestamps
-    formatted_chunks = []
-    for chunk in chunks:
-        timestamp = chunk.metadata.get('start_time', 0)
-        formatted_chunks.append(f"""
-        [{format_timestamp(timestamp)}]
-        Content: {chunk.page_content}
-        """)
-
-    system_prompt = f"""
-    You are an expert content analyzer...
-    Available Context: {formatted_chunks}
-    User Question: {query}
-    """
-
-    response = model.generate_content(system_prompt)
-    return response.text
-```
-
-**Technical Features:**
-
-- **Prompt Engineering**: Structured system prompts for consistent responses
-- **Context Window Management**: Optimal chunk selection for LLM input
-- **Timestamp Integration**: Seamless timestamp embedding in responses
-- **Response Formatting**: Structured markdown output with clickable links
-
-### **6. Build System & Development Tools**
-
-#### **Vite Configuration**
-
-```javascript
-// vite.config.js
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import { crx } from "@crxjs/vite-plugin";
-
-export default defineConfig({
-  plugins: [
-    react(), // React JSX transformation
-    crx({ manifest }), // Chrome extension building
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"), // Path aliasing
-    },
-  },
-});
-```
-
-**Technical Approach:**
-
-- **ESBuild**: Fast JavaScript/TypeScript compilation
-- **Hot Module Replacement**: Development server with live reload
-- **Chrome Extension Plugin**: Automated manifest processing
-- **Path Resolution**: Absolute imports with @ alias
-- **Asset Optimization**: Automatic asset bundling and optimization
-
-#### **Development Workflow**
-
-```bash
-# Frontend Development
-npm run dev      # Development server with HMR
-npm run build    # Production build for extension
-npm run lint     # ESLint code quality checks
-
-# Backend Development
-python api.py    # Flask development server
-docker-compose up  # Qdrant vector database
-```
+- **Quick Questions UI**: Display of auto-generated questions as clickable buttons
+- **Improved Response Rendering**: Direct content display without preambles
+- **Enhanced Timestamp Links**: Clickable time navigation throughout responses
+- **Loading States**: Better user feedback during processing
+- **Error Boundaries**: Robust error handling and recovery
 
 ### **7. Advanced Request Management**
 
@@ -398,31 +292,40 @@ export const getTranscript = async (videoId) => {
 - **Network Optimization**: Reduces unnecessary server load
 - **Error Handling**: Clean cancellation without error propagation
 
-### **8. Container Orchestration**
+### **8. Build System & Development Tools**
 
-#### **Docker Configuration**
+#### **Vite Configuration**
 
-```yaml
-# docker-compose.yml
-services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    ports:
-      - 6333:6333
-    volumes:
-      - qdrant_storage:/qdrant/storage
+```javascript
+// vite.config.js
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { crx } from "@crxjs/vite-plugin";
+
+export default defineConfig({
+  plugins: [
+    react(), // React JSX transformation
+    crx({ manifest }), // Chrome extension building
+  ],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"), // Path aliasing
+    },
+  },
+});
 ```
 
 **Technical Approach:**
 
-- **Containerization**: Isolated database deployment
-- **Port Mapping**: Localhost accessibility
-- **Volume Persistence**: Data persistence across container restarts
-- **Development Environment**: Consistent setup across machines
+- **ESBuild**: Fast JavaScript/TypeScript compilation
+- **Hot Module Replacement**: Development server with live reload
+- **Chrome Extension Plugin**: Automated manifest processing
+- **Path Resolution**: Absolute imports with @ alias
+- **Asset Optimization**: Automatic asset bundling and optimization
 
-## 🔄 Data Flow Architecture
+## 🔄 Enhanced Data Flow Architecture
 
-### **Complete Request Lifecycle**
+### **Complete Request Lifecycle with Quick Questions**
 
 1. **Video Detection & Processing**
 
@@ -432,6 +335,8 @@ services:
    Video ID Extraction → Transcript API → Language Detection → Translation
    ↓
    Chunking Strategy → Vector Embeddings → Qdrant Storage
+   ↓
+   Quick Questions Generation → UI Display
    ```
 
 2. **Question Processing Pipeline**
@@ -441,19 +346,28 @@ services:
    ↓
    Vector Similarity Search → Chunk Retrieval → Context Assembly
    ↓
-   Gemini AI Processing → Response Generation → Markdown Rendering
+   Gemini AI Processing → Direct Response Generation → Markdown Rendering
    ↓
    Timestamp Extraction → Link Generation → UI Update
    ```
 
-3. **Timestamp Navigation Flow**
+3. **Quick Questions Flow**
    ```
-   Markdown Response → Timestamp Link Click → Chrome Message API
+   Transcript Processing → Content Analysis → AI Question Generation
    ↓
-   Content Script → YouTube Video Element → currentTime Update
+   3 Diverse Questions → UI Button Display → Click Handler → Query Processing
    ```
 
 ## 🚀 Performance Optimizations
+
+### **Backend Optimizations**
+
+- **Modular Architecture**: Faster loading and better caching
+- **Sliding Window Chunking**: Optimal context preservation with 25% overlap
+- **Vector Index Optimization**: HNSW algorithm for fast similarity search
+- **Request Cancellation**: Prevents resource waste
+- **Connection Pooling**: Efficient database connections
+- **Proxy Fallback**: Multiple connection strategies for reliability
 
 ### **Frontend Optimizations**
 
@@ -462,21 +376,14 @@ services:
 - **Debounced Input**: Reduced API calls during typing
 - **Asset Lazy Loading**: Reduced initial bundle size
 - **Chrome Storage Caching**: Persistent data across sessions
+- **Quick Questions Caching**: Pre-generated questions for instant access
 
-### **Backend Optimizations**
+### **AI Optimizations**
 
-- **Connection Pooling**: Efficient database connections
-- **Vector Index Optimization**: HNSW algorithm for fast similarity search
-- **Chunk Size Tuning**: Optimal balance between context and performance
-- **Request Cancellation**: Prevents resource waste
-- **Streaming Responses**: Real-time response delivery
-
-### **Database Optimizations**
-
-- **Cosine Distance**: Efficient similarity calculation
-- **Index Configuration**: Optimized for query performance
-- **Memory Management**: Efficient vector storage
-- **Concurrent Access**: Multi-user support
+- **Direct Response Generation**: Eliminated conversational overhead
+- **Context Window Management**: Optimal chunk selection for LLM input
+- **Batch Question Generation**: Efficient processing of multiple questions
+- **Fallback Parsing**: Multiple strategies for robust response extraction
 
 ## 🔧 Configuration & Environment
 
@@ -486,7 +393,9 @@ services:
 # Required
 GOOGLE_API_KEY=your_gemini_api_key
 
-# Optional Proxy Configuration
+# Optional Proxy Configuration (for YouTube API access)
+PROXY_URL=http://user:pass@proxy.example.com:8080
+# OR separate HTTP/HTTPS configs
 PROXY_HTTP_URL=http://user:pass@proxy.example.com:8080
 PROXY_HTTPS_URL=https://user:pass@proxy.example.com:8080
 
@@ -495,39 +404,104 @@ FLASK_ENV=development
 FLASK_DEBUG=true
 ```
 
-### **Chrome Extension Permissions**
+### **Dependencies**
 
-```json
-{
-  "permissions": [
-    "scripting", // Content script injection
-    "activeTab", // Current tab access
-    "storage" // Chrome storage API
-  ],
-  "host_permissions": ["<all_urls>"] // Universal site access
-}
+```bash
+# Backend Requirements (requirements.txt)
+flask                         # Web framework
+flask-cors                    # Cross-origin support
+youtube-transcript-api        # Video transcript extraction
+python-dotenv                 # Environment management
+google-generativeai>=0.8.5   # Gemini AI integration
+langchain-google-genai>=0.0.10 # LangChain Gemini support
+langchain-community>=0.0.20  # LangChain utilities
+qdrant-client>=1.7.0         # Vector database client
+protobuf>=3.20.0,<5.0.0      # Protocol buffers
+deep-translator>=1.11.4      # Language translation
+langdetect>=1.0.9            # Language detection
 ```
 
 ## 🎯 Advanced Features
 
-### **Multi-language Support**
+### **Enhanced AI Capabilities**
 
-- **Language Detection**: Automatic content language identification
-- **Translation Pipeline**: Real-time translation capabilities
-- **Unicode Handling**: Proper text encoding throughout pipeline
-- **Cultural Context**: Language-aware response generation
+- **Direct Response Generation**: No conversational preambles for cleaner responses
+- **Quick Questions**: Auto-generated engaging questions about video content
+- **Multi-language Support**: Hindi to English translation with language detection
+- **Context-Aware Responses**: Better understanding of video content flow
+- **Timestamp Integration**: Seamless navigation within video responses
 
-### **Error Handling & Resilience**
+### **Robust Error Handling**
 
-- **Graceful Degradation**: Fallback mechanisms for failures
-- **Retry Logic**: Intelligent request retry strategies
-- **User Feedback**: Clear error communication
-- **Logging System**: Comprehensive debugging information
+- **Graceful Degradation**: Fallback mechanisms for all failure scenarios
+- **Proxy Support**: Multiple connection strategies for YouTube API access
+- **Translation Fallback**: Handles translation failures gracefully
+- **Vector Store Recovery**: Automatic collection recreation on errors
+- **Question Generation Fallback**: Multiple parsing strategies for robustness
 
-### **Security Measures**
+### **Enhanced User Experience**
 
-- **API Key Protection**: Secure credential storage
-- **Input Validation**: SQL injection and XSS prevention
+- **Instant Question Access**: Pre-generated questions for immediate exploration
+- **Direct Content Display**: Clean responses without unnecessary conversational elements
+- **Improved Loading States**: Better feedback during processing
+- **Seamless Navigation**: Enhanced timestamp clicking for video seeking
+- **Error Recovery**: User-friendly error messages and recovery options
+
+### **Security & Performance**
+
+- **API Key Protection**: Secure credential storage and transmission
+- **Input Validation**: Comprehensive sanitization and validation
 - **CORS Configuration**: Controlled cross-origin access
 - **Content Security Policy**: Extension security hardening
+- **Memory Management**: Efficient resource utilization and cleanup
 
+## 📚 Quick Start Guide
+
+### **Backend Setup**
+
+```bash
+# Clone and setup backend
+cd backend
+pip install -r requirements.txt
+
+# Start vector database
+docker-compose up -d
+
+# Set environment variables
+export GOOGLE_API_KEY="your_gemini_api_key"
+
+# Start Flask server
+python api.py
+```
+
+### **Frontend Setup**
+
+```bash
+# Clone and setup frontend
+cd frontend
+npm install
+
+# Development build
+npm run dev
+
+# Production build for extension
+npm run build
+```
+
+### **Chrome Extension Installation**
+
+1. Open Chrome and go to `chrome://extensions/`
+2. Enable "Developer mode"
+3. Click "Load unpacked" and select the `frontend/dist` folder
+4. Pin the extension to your toolbar
+5. Navigate to any YouTube video and click the extension icon
+
+## 🔮 Future Enhancements
+
+- **Multi-language Support**: Support for more languages beyond Hindi
+- **Video Summarization**: AI-generated video summaries
+- **Chapter Detection**: Automatic video chapter identification
+- **Collaborative Features**: Shared questions and responses
+- **Advanced Analytics**: Usage patterns and content insights
+- **Mobile Support**: Extension for mobile browsers
+- **API Rate Limiting**: Enhanced rate limiting and quota management
