@@ -5,9 +5,14 @@ const saveVideoId = () => {
   console.log("URL changed, new videoId:", videoId);
 
   if (videoId) {
+    // Store in both chrome storage and localStorage
     chrome.storage.sync.set({ videoId: videoId }, () => {
-      console.log("Video ID saved to storage:", videoId);
+      console.log("Video ID saved to chrome storage:", videoId);
     });
+    
+    // Also update localStorage for comparison when popup opens
+    localStorage.setItem("lastVideoId", videoId);
+    console.log("Video ID saved to localStorage:", videoId);
   }
 };
 
@@ -76,12 +81,39 @@ const createPopupOverlay = () => {
   return overlay;
 };
 
-const togglePopup = () => {
+const togglePopup = async () => {
   if (!popupOverlay) {
     popupOverlay = createPopupOverlay();
   }
 
   if (popupOverlay.style.display === "none" || !popupOverlay.style.display) {
+    // Get current video ID
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentVideoId = urlParams.get("v");
+    
+    if (currentVideoId) {
+      // Get stored video ID from localStorage
+      const storedVideoId = localStorage.getItem("lastVideoId");
+      
+      // Check if video ID has changed
+      if (currentVideoId !== storedVideoId) {
+        console.log("Video ID changed, storing new ID:", currentVideoId);
+        // Store new video ID in localStorage
+        localStorage.setItem("lastVideoId", currentVideoId);
+        
+        // Also update chrome storage (this will trigger the popup to load transcript)
+        chrome.storage.sync.set({ videoId: currentVideoId }, () => {
+          console.log("New video ID saved to chrome storage:", currentVideoId);
+        });
+      } else {
+        console.log("Video ID unchanged, directly showing chat:", currentVideoId);
+        // Video ID is the same, ensure chrome storage is up to date
+        chrome.storage.sync.set({ videoId: currentVideoId }, () => {
+          console.log("Video ID confirmed in chrome storage:", currentVideoId);
+        });
+      }
+    }
+
     popupOverlay.style.display = "block";
     // Focus the iframe for better UX
     const iframe = popupOverlay.querySelector("iframe");

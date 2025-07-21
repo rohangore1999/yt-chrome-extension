@@ -15,7 +15,11 @@ import {
 } from "lucide-react";
 
 import { LoadingScreen } from "./LoadingScreen";
-import { getTranscript, queryTranscript } from "../services/apis";
+import {
+  getTranscript,
+  queryTranscript,
+  cancelAllRequests,
+} from "../services/apis";
 import MarkdownResponse from "./MarkdownResponse";
 import "./Popup.css";
 
@@ -86,6 +90,14 @@ const Popup = ({ onApiKeyChange }) => {
         throw new Error(response.error || "Failed to get response");
       }
     } catch (error) {
+      // Don't show error message if request was cancelled (user sent new message)
+      if (error.message === "Request cancelled") {
+        console.log(
+          "Query request was cancelled - user likely sent a new message"
+        );
+        return; // Exit early, don't show error or update loading state
+      }
+
       console.error("Error getting response:", error);
       const errorMessage = {
         id: (Date.now() + 1).toString(),
@@ -126,6 +138,9 @@ const Popup = ({ onApiKeyChange }) => {
 
   const fetchTranscript = async (videoId) => {
     try {
+      // Cancel any pending requests before starting new transcript fetch
+      cancelAllRequests();
+
       setIsTranscriptLoading(true);
       setMessages([]);
 
@@ -154,6 +169,14 @@ const Popup = ({ onApiKeyChange }) => {
         ]);
       }
     } catch (error) {
+      // Don't show error message if request was cancelled (new video loaded)
+      if (error.message === "Request cancelled") {
+        console.log(
+          "Transcript request was cancelled - new video likely loaded"
+        );
+        return; // Exit early, don't show error or update loading state
+      }
+
       console.error("Error fetching transcript:", error);
       setMessages([
         {
@@ -181,16 +204,33 @@ const Popup = ({ onApiKeyChange }) => {
 
     const handleStorageChange = (changes, namespace) => {
       if (namespace === "sync" && changes.videoId) {
-        console.log("VideoId changed:", changes.videoId.newValue);
-        setVideoId(changes.videoId.newValue);
-        setVideoUrl(`https://youtube.com/watch?v=${changes.videoId.newValue}`);
-        fetchTranscript(changes.videoId.newValue);
+        const newVideoId = changes.videoId.newValue;
+        const oldVideoId = changes.videoId.oldValue;
+
+        console.log("VideoId storage change:", {
+          old: oldVideoId,
+          new: newVideoId,
+        });
+
+        // Only fetch transcript if the video ID actually changed
+        if (newVideoId !== oldVideoId && newVideoId !== videoId) {
+          console.log("Video ID actually changed, fetching new transcript");
+          setVideoId(newVideoId);
+          setVideoUrl(`https://youtube.com/watch?v=${newVideoId}`);
+          fetchTranscript(newVideoId);
+        } else {
+          console.log("Video ID unchanged, updating state only");
+          setVideoId(newVideoId);
+          setVideoUrl(`https://youtube.com/watch?v=${newVideoId}`);
+        }
       }
     };
 
     chrome.storage.onChanged.addListener(handleStorageChange);
 
     return () => {
+      // Cancel any pending requests when component unmounts
+      cancelAllRequests();
       chrome.storage.onChanged.removeListener(handleStorageChange);
     };
   }, []);

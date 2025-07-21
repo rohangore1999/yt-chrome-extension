@@ -1,5 +1,6 @@
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
+from youtube_transcript_api.proxies import GenericProxyConfig
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -29,7 +30,81 @@ load_dotenv()
 
 # genai.configure(api_key=GOOGLE_API_KEY)
 translator = GoogleTranslator(source='auto', target='en')
-ytt_api = YouTubeTranscriptApi()
+
+def create_youtube_transcript_api():
+    """
+    Create YouTubeTranscriptApi instance with optional proxy configuration.
+    
+    This function helps bypass YouTube IP bans by using proxy servers.
+    
+    Environment Variables for Proxy Configuration:
+    - PROXY_HTTP_URL: HTTP proxy URL (format: http://username:password@proxy.example.com:port)
+    - PROXY_HTTPS_URL: HTTPS proxy URL (format: https://username:password@proxy.example.com:port)
+    - PROXY_URL: Single proxy URL to use for both HTTP and HTTPS (recommended for most cases)
+    
+    Examples:
+    - PROXY_URL=http://user:pass@proxy.example.com:8080 (uses same proxy for both HTTP and HTTPS)
+    - PROXY_HTTP_URL=http://user:pass@proxy.example.com:8080
+    - PROXY_HTTPS_URL=https://user:pass@proxy.example.com:8080
+    
+    Popular proxy services: ProxyMesh, Bright Data, Smartproxy, etc.
+    For best results, use services that automatically rotate proxy IPs.
+    
+    Note: Many proxies only support HTTP protocol. In this case, use PROXY_URL or set both
+    PROXY_HTTP_URL and PROXY_HTTPS_URL to the same HTTP URL.
+    """
+    proxy_url = os.getenv('PROXY_URL')
+    proxy_http_url = os.getenv('PROXY_HTTP_URL')
+    proxy_https_url = os.getenv('PROXY_HTTPS_URL')
+    
+    # If PROXY_URL is set, use it for both HTTP and HTTPS
+    if proxy_url:
+        proxy_http_url = proxy_url
+        proxy_https_url = proxy_url
+        print(f"Using single proxy URL for both HTTP and HTTPS: {proxy_url.split('@')[1] if '@' in proxy_url else proxy_url}")
+    
+    if proxy_http_url or proxy_https_url:
+        print(f"Configuring YouTube Transcript API with proxy:")
+        if proxy_http_url:
+            # Hide password in logs for security
+            safe_http_url = proxy_http_url.split('@')[1] if '@' in proxy_http_url else proxy_http_url
+            print(f"  HTTP Proxy: {safe_http_url}")
+        if proxy_https_url:
+            # Hide password in logs for security
+            safe_https_url = proxy_https_url.split('@')[1] if '@' in proxy_https_url else proxy_https_url
+            print(f"  HTTPS Proxy: {safe_https_url}")
+        
+        try:
+            proxy_config = GenericProxyConfig(
+                http_url=proxy_http_url,
+                https_url=proxy_https_url,
+            )
+            print("Proxy configuration successful.")
+            return YouTubeTranscriptApi(proxy_config=proxy_config)
+        except Exception as e:
+            error_msg = str(e).lower()
+            print(f"Warning: Failed to configure proxy: {str(e)}")
+            
+            # If it's an HTTPS proxy error and we have HTTP proxy, try using HTTP for both
+            if ("https" in error_msg or "ssl" in error_msg or "wrong_version_number" in error_msg) and proxy_http_url:
+                print("Detected HTTPS proxy issue. Trying HTTP proxy for both HTTP and HTTPS connections...")
+                try:
+                    fallback_config = GenericProxyConfig(
+                        http_url=proxy_http_url,
+                        https_url=proxy_http_url,  # Use HTTP proxy for HTTPS as well
+                    )
+                    print("Fallback proxy configuration successful.")
+                    return YouTubeTranscriptApi(proxy_config=fallback_config)
+                except Exception as fallback_e:
+                    print(f"Fallback proxy configuration also failed: {str(fallback_e)}")
+            
+            print("Falling back to direct connection...")
+            return YouTubeTranscriptApi()
+    else:
+        print("No proxy configuration found. Using direct connection.")
+        return YouTubeTranscriptApi()
+
+ytt_api = create_youtube_transcript_api()
 
 # Initialize Qdrant client
 qdrant_client = QdrantClient(url="http://localhost:6333")

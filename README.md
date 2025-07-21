@@ -130,6 +130,47 @@ chrome-extension/
 ```bash
 cd backend
 pip install -r requirements.txt
+```
+
+### Environment Configuration
+
+Create a `.env` file in the `backend/` directory with the following variables:
+
+```bash
+# Required: Google API Key for Gemini AI
+GOOGLE_API_KEY=your_google_api_key_here
+
+# Optional: Proxy Configuration (for bypassing YouTube IP bans)
+PROXY_HTTP_URL=http://username:password@proxy.example.com:port
+PROXY_HTTPS_URL=https://username:password@proxy.example.com:port
+```
+
+#### Proxy Configuration Details
+
+If YouTube has blocked your system IP, you can configure proxy settings to bypass the restriction:
+
+- **Format**: `http://username:password@proxy.example.com:port`
+- **Popular Services**: ProxyMesh, Bright Data, Smartproxy, etc.
+- **Recommendation**: Use services that automatically rotate proxy IPs for maximum reliability
+- **Note**: You can configure either HTTP, HTTPS, or both proxy URLs
+
+Example proxy configurations:
+
+```bash
+# HTTP only
+PROXY_HTTP_URL=http://user:pass@proxy.example.com:8080
+
+# HTTPS only  
+PROXY_HTTPS_URL=https://user:pass@proxy.example.com:8080
+
+# Both (recommended)
+PROXY_HTTP_URL=http://user:pass@proxy.example.com:8080
+PROXY_HTTPS_URL=https://user:pass@proxy.example.com:8080
+```
+
+### Starting the Backend
+
+```bash
 python api.py
 ```
 
@@ -147,3 +188,82 @@ npm run build
 2. Enable Developer Mode
 3. Load unpacked extension
 4. Select built frontend directory
+
+## 🔧 Troubleshooting
+
+### YouTube IP Ban Issues
+
+If you encounter errors like "Video unavailable" or "Transcripts disabled", your IP might be blocked by YouTube. Try these solutions:
+
+1. **Configure Proxy**: Set up `PROXY_HTTP_URL` and `PROXY_HTTPS_URL` environment variables
+2. **Check Proxy Connectivity**: Ensure your proxy service is active and accessible
+3. **Rotate Proxy IPs**: Use a proxy service that automatically rotates IP addresses
+4. **Monitor Logs**: Check backend console output for proxy configuration status
+
+### Common Error Messages
+
+- **"TranscriptsDisabled"**: Video has no available transcripts
+- **"VideoUnavailable"**: Video might be private, deleted, or region-blocked
+- **"NoTranscriptFound"**: No transcripts in supported languages
+- **"Failed to configure proxy"**: Check proxy URL format and credentials
+
+### Proxy Debugging
+
+The backend will log proxy configuration status:
+
+```
+Configuring YouTube Transcript API with proxy:
+  HTTP Proxy: proxy.example.com:8080
+  HTTPS Proxy: proxy.example.com:8080
+Proxy configuration successful.
+```
+
+If proxy fails, it will fall back to direct connection automatically.
+
+## 🚀 API Request Management
+
+### Automatic Request Cancellation
+
+The application now includes smart request management to prevent race conditions and improve user experience:
+
+#### Features:
+- **Auto-cancellation**: Previous requests are automatically cancelled when new ones are made
+- **Race condition prevention**: Only the latest request results are processed
+- **Clean error handling**: Cancelled requests don't show error messages to users
+- **Resource optimization**: Prevents unnecessary network usage and processing
+
+#### How it works:
+
+1. **Transcript Requests**: When a new video is loaded, any pending transcript request is cancelled
+2. **Query Requests**: When a user sends a new question, any pending AI query is cancelled
+3. **Component Cleanup**: All pending requests are cancelled when the popup is closed
+
+#### API Functions Available:
+
+```javascript
+import { 
+  getTranscript, 
+  queryTranscript, 
+  cancelAllRequests,
+  getRequestStatus,
+  hasPendingRequests 
+} from '../services/apis';
+
+// Cancel all pending requests manually
+cancelAllRequests();
+
+// Check current request status
+const status = getRequestStatus();
+console.log(status.hasTranscriptRequest); // boolean
+console.log(status.currentQuery); // string or null
+
+// Check if any requests are pending
+if (hasPendingRequests()) {
+  console.log("Requests in progress...");
+}
+```
+
+#### Benefits:
+- **Better UX**: Users see results from their latest action, not older requests
+- **Performance**: Reduces server load and unnecessary processing
+- **Reliability**: Prevents confusing responses from out-of-order request completion
