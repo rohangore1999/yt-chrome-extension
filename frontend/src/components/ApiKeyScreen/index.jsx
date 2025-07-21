@@ -1,4 +1,6 @@
 import { useState } from "react";
+
+// Components
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +12,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Key, Youtube, Sparkles, Eye, EyeOff, Shield, Zap } from "lucide-react";
+
+// Icons
+import { Sparkles, Eye, EyeOff, Shield, Zap } from "lucide-react";
+
+// Styles
 import "./ApiKeyScreen.css";
 
 export function ApiKeyScreen({ onApiKeySubmit }) {

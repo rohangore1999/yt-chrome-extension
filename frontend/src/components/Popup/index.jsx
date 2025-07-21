@@ -1,12 +1,16 @@
 import { useState, useRef, useEffect } from "react";
+
+// Components
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { LoadingScreen } from "@/components/LoadingScreen";
+import MarkdownResponse from "@/components/MarkdownResponse";
+
+// Icons
 import {
   Youtube,
   Send,
-  Settings,
   UserCircle,
   Bot,
   Sparkles,
@@ -14,14 +18,15 @@ import {
   X,
 } from "lucide-react";
 
-import { LoadingScreen } from "./LoadingScreen";
+// Styles
+import "./Popup.css";
+
+// Services
 import {
   getTranscript,
   queryTranscript,
   cancelAllRequests,
-} from "../services/apis";
-import MarkdownResponse from "./MarkdownResponse";
-import "./Popup.css";
+} from "../../services/apis";
 
 const Popup = ({ onApiKeyChange }) => {
   const [messages, setMessages] = useState([
@@ -36,7 +41,6 @@ const Popup = ({ onApiKeyChange }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isTranscriptLoading, setIsTranscriptLoading] = useState(false);
   const [videoId, setVideoId] = useState("");
-  const [videoUrl, setVideoUrl] = useState("");
   const [quickQuestions, setQuickQuestions] = useState([]);
 
   const scrollAreaRef = useRef(null);
@@ -189,7 +193,6 @@ const Popup = ({ onApiKeyChange }) => {
       console.log("Initial videoId:", result);
       if (result.videoId) {
         setVideoId(result.videoId);
-        setVideoUrl(`https://youtube.com/watch?v=${result.videoId}`);
         fetchTranscript(result.videoId);
       }
     });
@@ -208,12 +211,11 @@ const Popup = ({ onApiKeyChange }) => {
         if (newVideoId !== oldVideoId && newVideoId !== videoId) {
           console.log("Video ID actually changed, fetching new transcript");
           setVideoId(newVideoId);
-          setVideoUrl(`https://youtube.com/watch?v=${newVideoId}`);
+
           fetchTranscript(newVideoId);
         } else {
           console.log("Video ID unchanged, updating state only");
           setVideoId(newVideoId);
-          setVideoUrl(`https://youtube.com/watch?v=${newVideoId}`);
         }
       }
     };

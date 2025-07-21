@@ -1,6 +1,11 @@
-import { Youtube, Brain, Zap, Sparkles } from "lucide-react";
+// Components
 import { Card, CardContent } from "@/components/ui/card";
+
+// Styles
 import "./LoadingScreen.css";
+
+// Icons
+import { Youtube, Brain, Zap, Sparkles } from "lucide-react";
 
 export function LoadingScreen({ type }) {
   const isIngestion = type === "ingestion";

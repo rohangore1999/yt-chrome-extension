@@ -1,7 +1,11 @@
 import { useState, useEffect } from "react";
+
+// Components
 import { ApiKeyScreen } from "@/components/ApiKeyScreen";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import Popup from "@/components/Popup";
+
+// Styles
 import "./Index.css";
 
 const Index = () => {
@@ -33,22 +37,39 @@ const Index = () => {
   const handleApiKeyChange = () => {
     // Clear API key from localStorage
     localStorage.removeItem("gemini_api_key");
-    
+
     setApiKey(null);
     setIsProcessing(false);
   };
 
+  // Determine current app state
+  const getCurrentState = () => {
+    if (isProcessing) return "PROCESSING";
+    if (!apiKey) return "NO_API_KEY";
+    return "READY";
+  };
+
+  // Render component based on current state
+  const renderContent = () => {
+    switch (getCurrentState()) {
+      case "PROCESSING":
+        return (
+          <div style={{ height: "100vh", width: "400px" }}>
+            <LoadingScreen type="ingestion" />
+          </div>
+        );
+      case "NO_API_KEY":
+        return <ApiKeyScreen onApiKeySubmit={handleApiKeySubmit} />;
+      case "READY":
+        return <Popup onApiKeyChange={handleApiKeyChange} />;
+      default:
+        return <ApiKeyScreen onApiKeySubmit={handleApiKeySubmit} />;
+    }
+  };
+
   return (
     <div className="app-container">
-      <div className="app-card">
-        {isProcessing ? (
-          <LoadingScreen type="ingestion" />
-        ) : !apiKey ? (
-          <ApiKeyScreen onApiKeySubmit={handleApiKeySubmit} />
-        ) : (
-          <Popup onApiKeyChange={handleApiKeyChange} />
-        )}
-      </div>
+      <div className="app-card">{renderContent()}</div>
     </div>
   );
 };
