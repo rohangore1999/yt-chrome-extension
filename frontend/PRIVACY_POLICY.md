@@ -1,7 +1,7 @@
 # Privacy Policy - AI Video Assistant Chrome Extension
 
-**Last Updated:** January 22, 2025  
-**Effective Date:** January 22, 2025  
+**Last Updated:** July 22, 2025  
+**Effective Date:** July 22, 2025  
 **Version:** 1.0
 
 ---
@@ -153,14 +153,14 @@ This extension complies with:
 
 If you have questions, concerns, or requests regarding this privacy policy or your data, please contact us:
 
-- **Email:** [Your Email Address]
-- **GitHub:** [Your GitHub Repository URL]
+- **Email:** gorerohan15@gmail.com
+- **GitHub:** https://github.com/rohangore1999/yt-chrome-extension
 - **Extension Support:** Available through Chrome Web Store listing
 - **Response Time:** We aim to respond to privacy inquiries within 48 hours
 
 ---
 
-**Developer:** [Your Name]  
+**Developer:** Rohan Gore  
 **Extension:** AI Video Assistant - Chrome Extension  
 **Version:** 1.0  
-**Repository:** [GitHub Repository URL]
+**Repository:** https://github.com/rohangore1999/yt-chrome-extension
