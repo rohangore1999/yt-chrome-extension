@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "Persona Chatbot for Youtube",
+  "name": "AI Video Assistant - Chat with YouTube Videos",
   "version": "1.0",
-  "description": "Persona Chatbot for Youtube",
+  "description": "Transform any YouTube video into an interactive AI conversation.",
   "permissions": ["scripting", "activeTab", "storage"],
 
   "action": {
-    "default_icon": "icon.png"
+    "default_icon": "yt-bot.png"
   },
 
   "content_scripts": [
