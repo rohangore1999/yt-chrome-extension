@@ -20,7 +20,6 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "popupClosed") {
     // Handle popup closed event if needed
-    console.log("Popup was closed");
   }
 
   // Send response to keep the message channel open

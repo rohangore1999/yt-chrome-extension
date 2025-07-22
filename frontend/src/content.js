@@ -2,14 +2,13 @@
 const saveVideoId = () => {
   const urlParams = new URLSearchParams(window.location.search);
   const videoId = urlParams.get("v");
-  console.log("URL changed, new videoId:", videoId);
 
   if (videoId) {
     // Store in both chrome storage and localStorage
     chrome.storage.sync.set({ videoId: videoId }, () => {
       console.log("Video ID saved to chrome storage:", videoId);
     });
-    
+
     // Also update localStorage for comparison when popup opens
     localStorage.setItem("lastVideoId", videoId);
     console.log("Video ID saved to localStorage:", videoId);
@@ -23,10 +22,8 @@ const seekToTimestamp = (seconds) => {
     const video = document.querySelector("video");
     if (video) {
       video.currentTime = seconds;
-      console.log(`Seeked to ${seconds} seconds`);
       return true;
     } else {
-      console.log("Video element not found");
       return false;
     }
   } catch (error) {
@@ -90,26 +87,24 @@ const togglePopup = async () => {
     // Get current video ID
     const urlParams = new URLSearchParams(window.location.search);
     const currentVideoId = urlParams.get("v");
-    
+
     if (currentVideoId) {
       // Get stored video ID from localStorage
       const storedVideoId = localStorage.getItem("lastVideoId");
-      
+
       // Check if video ID has changed
       if (currentVideoId !== storedVideoId) {
-        console.log("Video ID changed, storing new ID:", currentVideoId);
         // Store new video ID in localStorage
         localStorage.setItem("lastVideoId", currentVideoId);
-        
+
         // Also update chrome storage (this will trigger the popup to load transcript)
         chrome.storage.sync.set({ videoId: currentVideoId }, () => {
-          console.log("New video ID saved to chrome storage:", currentVideoId);
+          // New video ID saved to chrome storage
         });
       } else {
-        console.log("Video ID unchanged, directly showing chat:", currentVideoId);
         // Video ID is the same, ensure chrome storage is up to date
         chrome.storage.sync.set({ videoId: currentVideoId }, () => {
-          console.log("Video ID confirmed in chrome storage:", currentVideoId);
+          // Video ID confirmed in chrome storage
         });
       }
     }

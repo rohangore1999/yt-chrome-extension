@@ -88,9 +88,6 @@ const Popup = ({ onApiKeyChange }) => {
     } catch (error) {
       // Don't show error message if request was cancelled (user sent new message)
       if (error.message === "Request cancelled") {
-        console.log(
-          "Query request was cancelled - user likely sent a new message"
-        );
         return; // Exit early, don't show error or update loading state
       }
 
@@ -141,7 +138,6 @@ const Popup = ({ onApiKeyChange }) => {
       setMessages([]);
 
       const transcript = await getTranscript(videoId);
-      console.log({ transcript });
 
       if (transcript.success) {
         setMessages([
@@ -167,9 +163,6 @@ const Popup = ({ onApiKeyChange }) => {
     } catch (error) {
       // Don't show error message if request was cancelled (new video loaded)
       if (error.message === "Request cancelled") {
-        console.log(
-          "Transcript request was cancelled - new video likely loaded"
-        );
         return; // Exit early, don't show error or update loading state
       }
 
@@ -190,7 +183,6 @@ const Popup = ({ onApiKeyChange }) => {
 
   useEffect(() => {
     chrome.storage.sync.get(["videoId"], (result) => {
-      console.log("Initial videoId:", result);
       if (result.videoId) {
         setVideoId(result.videoId);
         fetchTranscript(result.videoId);
@@ -202,19 +194,11 @@ const Popup = ({ onApiKeyChange }) => {
         const newVideoId = changes.videoId.newValue;
         const oldVideoId = changes.videoId.oldValue;
 
-        console.log("VideoId storage change:", {
-          old: oldVideoId,
-          new: newVideoId,
-        });
-
         // Only fetch transcript if the video ID actually changed
         if (newVideoId !== oldVideoId && newVideoId !== videoId) {
-          console.log("Video ID actually changed, fetching new transcript");
           setVideoId(newVideoId);
-
           fetchTranscript(newVideoId);
         } else {
-          console.log("Video ID unchanged, updating state only");
           setVideoId(newVideoId);
         }
       }

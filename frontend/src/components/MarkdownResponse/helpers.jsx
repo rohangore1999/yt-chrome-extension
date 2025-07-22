@@ -22,7 +22,6 @@ const TimestampLink = ({ time }) => {
         className="timestamp-link"
         onClick={(e) => {
           e.preventDefault();
-          console.log("Seeking to timestamp:", seconds);
           // Send message to content script to seek to timestamp
           chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs[0]) {
@@ -33,11 +32,7 @@ const TimestampLink = ({ time }) => {
                   seconds: seconds,
                 },
                 (response) => {
-                  if (response && response.success) {
-                    console.log("Successfully seeked to timestamp");
-                  } else {
-                    console.log("Failed to seek to timestamp");
-                  }
+                  // Timestamp seek completed
                 }
               );
             }
@@ -55,7 +50,6 @@ const TimestampLink = ({ time }) => {
 // Function to process text and convert timestamps to links
 const processText = (text) => {
   if (typeof text !== "string") {
-    console.log("Received non-string text:", text);
     return text;
   }
 
@@ -91,7 +85,6 @@ export const customRenderers = {
     return <p>{processChildren(children)}</p>;
   },
   li: ({ children }) => {
-    console.log("List item children:", children);
     return <li>{processChildren(children)}</li>;
   },
   strong: ({ children }) => {

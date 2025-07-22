@@ -258,39 +258,252 @@ App.jsx (Root)
 - **Loading States**: Better user feedback during processing
 - **Error Boundaries**: Robust error handling and recovery
 
-### **7. Advanced Request Management**
+### **7. Advanced Request Management with AbortController**
 
-#### **Race Condition Prevention**
+#### **Race Condition Prevention Architecture**
+
+The application implements a sophisticated request management system using the Web API `AbortController` to prevent race conditions and ensure optimal resource utilization in asynchronous operations.
+
+#### **Global Request State Management**
 
 ```javascript
-// Global request controllers
+// Global tracking of active requests
 let currentTranscriptController = null;
 let currentQueryController = null;
 
+// Request lifecycle pattern
 export const getTranscript = async (videoId) => {
-  // Cancel previous request
+  try {
+    // 1. Cancel any existing transcript request
+    if (currentTranscriptController) {
+      console.log("Canceling previous transcript request for:", 
+                  currentTranscriptController.videoId);
+      currentTranscriptController.abort();
+    }
+
+    // 2. Create new AbortController for this request
+    const controller = new AbortController();
+    controller.videoId = videoId; // Custom property for debugging
+    currentTranscriptController = controller;
+
+    // 3. Make fetch request with signal
+    const response = await fetch(`/api/transcript?video_id=${videoId}`, {
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+      },
+    });
+
+    // 4. Check if request was aborted during processing
+    if (controller.signal.aborted) {
+      throw new Error("Request was cancelled");
+    }
+
+    const data = await response.json();
+
+    // 5. Clear controller only if it's still current (race condition check)
+    if (currentTranscriptController === controller) {
+      currentTranscriptController = null;
+      console.log("Transcript request completed successfully for video:", videoId);
+    }
+
+    return data;
+  } catch (error) {
+    // Cleanup controller reference if it matches current request
+    if (currentTranscriptController?.videoId === videoId) {
+      currentTranscriptController = null;
+    }
+
+    // Silent handling of intentional cancellations
+    if (error.name === "AbortError" || error.message === "Request was cancelled") {
+      throw new Error("Request cancelled");
+    }
+
+    console.error("Error fetching transcript:", error);
+    throw error;
+  }
+};
+```
+
+#### **Race Condition Prevention Mechanism**
+
+**Critical Check Pattern:**
+```javascript
+// Only allow the current active controller to clear itself
+if (currentTranscriptController === controller) {
+  currentTranscriptController = null;
+}
+```
+
+**Problem Scenario Without Check:**
+```javascript
+// Timeline without race condition protection:
+// T1: Request A starts → currentTranscriptController = ControllerA
+// T2: Request B starts → currentTranscriptController = ControllerB (A cancelled)
+// T3: Request A cleanup runs → currentTranscriptController = null (WRONG!)
+// T4: Request B finishes → lost reference to active controller
+```
+
+**Solution with Identity Check:**
+```javascript
+// Timeline with race condition protection:
+// T1: Request A starts → currentTranscriptController = ControllerA
+// T2: Request B starts → currentTranscriptController = ControllerB (A cancelled)
+// T3: Request A cleanup: if (current === ControllerA) → FALSE, no change
+// T4: Request B finishes: if (current === ControllerB) → TRUE, safe to clear
+```
+
+#### **Request Cancellation Utility**
+
+```javascript
+export const cancelAllRequests = () => {
+  let cancelledCount = 0;
+
+  // Cancel transcript request if active
   if (currentTranscriptController) {
     currentTranscriptController.abort();
+    currentTranscriptController = null;
+    cancelledCount++;
   }
 
-  // Create new controller
-  const controller = new AbortController();
-  currentTranscriptController = controller;
+  // Cancel query request if active
+  if (currentQueryController) {
+    currentQueryController.abort();
+    currentQueryController = null;
+    cancelledCount++;
+  }
 
-  // Fetch with cancellation support
-  const response = await fetch(url, {
-    signal: controller.signal,
-    headers: { "X-API-Key": apiKey },
-  });
+  return cancelledCount;
 };
+```
+
+#### **AbortController Signal Flow**
+
+**1. Signal Creation and Attachment:**
+```javascript
+const controller = new AbortController();
+const signal = controller.signal;
+
+// Attach to fetch request
+fetch(url, { signal });
+
+// Monitor abort state
+if (signal.aborted) {
+  // Request was cancelled
+}
+```
+
+**2. Automatic Cleanup on Abort:**
+```javascript
+// When controller.abort() is called:
+// - signal.aborted becomes true
+// - fetch() immediately rejects with AbortError
+// - network request is cancelled by browser
+// - resources are freed
+```
+
+**3. Component Lifecycle Integration:**
+```javascript
+useEffect(() => {
+  // Component cleanup cancels pending requests
+  return () => {
+    cancelAllRequests();
+  };
+}, []);
+```
+
+#### **Advanced Error Handling Patterns**
+
+**Silent Cancellation Pattern:**
+```javascript
+} catch (error) {
+  // Don't show error UI for intentional cancellations
+  if (error.message === "Request cancelled") {
+    return; // Exit silently
+  }
+  
+  // Show error UI only for actual failures
+  showErrorMessage(error);
+} finally {
+  setIsLoading(false);
+}
+```
+
+**Component State Protection:**
+```javascript
+// Prevent state updates after component unmount
+const handleSendMessage = async () => {
+  try {
+    const response = await queryTranscript(query);
+    
+    // Check if request was cancelled (component unmounted)
+    if (response.cancelled) {
+      return; // Don't update state
+    }
+    
+    setMessages(prev => [...prev, response]);
+  } catch (error) {
+    if (error.message !== "Request cancelled") {
+      setError(error);
+    }
+  }
+};
+```
+
+#### **Performance Benefits**
+
+**Network Optimization:**
+- Cancelled requests stop consuming bandwidth immediately
+- Server resources freed from processing cancelled requests
+- Reduced API quota usage
+
+**Memory Management:**
+- Prevents accumulation of pending Promise objects
+- Eliminates memory leaks from unresolved requests
+- Faster garbage collection of cancelled operations
+
+**User Experience:**
+- Immediate response to user actions (no waiting for old requests)
+- Loading states accurately reflect current operations
+- No outdated data overwrites from stale requests
+
+#### **Implementation Verification**
+
+**Test Rapid User Actions:**
+```javascript
+// Simulate rapid video switching
+async function testRaceConditions() {
+  const videos = ['video1', 'video2', 'video3'];
+  
+  // Fire rapid requests
+  videos.forEach((videoId, index) => {
+    setTimeout(() => {
+      getTranscript(videoId);
+    }, index * 100); // 100ms apart
+  });
+  
+  // Only the last request (video3) should complete
+  // Previous requests should be cancelled automatically
+}
+```
+
+**Monitor Controller State:**
+```javascript
+// Debug logging for controller lifecycle
+console.log('Active controllers:', {
+  transcript: currentTranscriptController?.videoId || 'none',
+  query: currentQueryController?.query || 'none'
+});
 ```
 
 **Technical Benefits:**
 
-- **Memory Efficiency**: Prevents memory leaks from pending requests
-- **User Experience**: Latest action always takes precedence
-- **Network Optimization**: Reduces unnecessary server load
-- **Error Handling**: Clean cancellation without error propagation
+- **Atomic Request Management**: Only one request of each type active at any time
+- **Resource Protection**: Prevents memory leaks from pending requests
+- **State Consistency**: Ensures UI state matches actual network operations
+- **Network Efficiency**: Reduces unnecessary server load and bandwidth usage
+- **Error Isolation**: Clean separation between intentional cancellations and actual errors
 
 ### **8. Build System & Development Tools**
 
@@ -495,13 +708,3 @@ npm run build
 3. Click "Load unpacked" and select the `frontend/dist` folder
 4. Pin the extension to your toolbar
 5. Navigate to any YouTube video and click the extension icon
-
-## 🔮 Future Enhancements
-
-- **Multi-language Support**: Support for more languages beyond Hindi
-- **Video Summarization**: AI-generated video summaries
-- **Chapter Detection**: Automatic video chapter identification
-- **Collaborative Features**: Shared questions and responses
-- **Advanced Analytics**: Usage patterns and content insights
-- **Mobile Support**: Extension for mobile browsers
-- **API Rate Limiting**: Enhanced rate limiting and quota management

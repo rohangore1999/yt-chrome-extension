@@ -1,6 +1,9 @@
 // Global variables to track current requests
 let currentTranscriptController = null;
 
+// Global variable to track the current query request
+let currentQueryController = null;
+
 export const getTranscript = async (videoId) => {
   try {
     // // Cancel any existing transcript request
@@ -1181,7 +1184,6 @@ export const getTranscript = async (videoId) => {
       error.name === "AbortError" ||
       error.message === "Request was cancelled"
     ) {
-      console.log("Transcript request cancelled for video:", videoId);
       throw new Error("Request cancelled");
     }
 
@@ -1189,9 +1191,6 @@ export const getTranscript = async (videoId) => {
     throw error;
   }
 };
-
-// Global variable to track the current query request
-let currentQueryController = null;
 
 export const queryTranscript = async (query) => {
   try {
@@ -1275,7 +1274,6 @@ export const queryTranscript = async (query) => {
       error.name === "AbortError" ||
       error.message === "Request was cancelled"
     ) {
-      console.log("Query request cancelled for:", query);
       throw new Error("Request cancelled");
     }
 
@@ -1294,23 +1292,15 @@ export const cancelAllRequests = () => {
   let cancelledCount = 0;
 
   if (currentTranscriptController) {
-    console.log("Cancelling pending transcript request");
     currentTranscriptController.abort();
     currentTranscriptController = null;
     cancelledCount++;
   }
 
   if (currentQueryController) {
-    console.log("Cancelling pending query request");
     currentQueryController.abort();
     currentQueryController = null;
     cancelledCount++;
-  }
-
-  if (cancelledCount > 0) {
-    console.log(`Cancelled ${cancelledCount} pending request(s)`);
-  } else {
-    console.log("No pending requests to cancel");
   }
 
   return cancelledCount;
