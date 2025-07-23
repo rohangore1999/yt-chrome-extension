@@ -1,4 +1,3 @@
-# nixpacks.toml
-
-[start]
-cmd = "gunicorn api:app"
+# Use Dockerfile for deployment
+[build]
+builder = "docker"

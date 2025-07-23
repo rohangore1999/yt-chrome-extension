@@ -3,9 +3,11 @@ from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Distance, VectorParams
+import os
 
-# Initialize Qdrant client
-qdrant_client = QdrantClient(url="http://localhost:6333")
+# Initialize Qdrant client with environment variable support
+QDRANT_URL = os.getenv('QDRANT_URL', 'http://localhost:6333')
+qdrant_client = QdrantClient(url=QDRANT_URL)
 
 def get_embeddings(api_key):
     """
