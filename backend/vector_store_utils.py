@@ -6,7 +6,7 @@ from qdrant_client.models import Distance, VectorParams
 import os
 
 # Initialize Qdrant client with environment variable support
-QDRANT_URL = os.getenv('QDRANT_URL', 'http://localhost:6333')
+QDRANT_URL = os.getenv('QDRANT_URL', 'https://qdrant-production-0384.up.railway.app')
 qdrant_client = QdrantClient(url=QDRANT_URL)
 
 def get_embeddings(api_key):
