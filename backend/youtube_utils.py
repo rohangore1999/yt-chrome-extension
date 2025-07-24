@@ -1,7 +1,7 @@
 import os
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
-from youtube_transcript_api.proxies import GenericProxyConfig
+from youtube_transcript_api.proxies import GenericProxyConfig, WebshareProxyConfig
 from langchain_core.documents import Document
 from deep_translator import GoogleTranslator
 from langdetect import detect
@@ -11,26 +11,53 @@ translator = GoogleTranslator(source='auto', target='en')
 
 def create_youtube_transcript_api():
     """
-    Create YouTubeTranscriptApi instance with optional proxy configuration.
+    Create YouTubeTranscriptApi instance with Webshare proxy configuration.
     
-    This function helps bypass YouTube IP bans by using proxy servers.
+    This function helps bypass YouTube IP bans by using Webshare rotating residential proxies.
     
-    Environment Variables for Proxy Configuration:
-    - PROXY_HTTP_URL: HTTP proxy URL (format: http://username:password@proxy.example.com:port)
-    - PROXY_HTTPS_URL: HTTPS proxy URL (format: https://username:password@proxy.example.com:port)
-    - PROXY_URL: Single proxy URL to use for both HTTP and HTTPS (recommended for most cases)
+    Environment Variables for Webshare Configuration:
+    - WEBSHARE_PROXY_USERNAME: Webshare proxy username (defaults to configured value)
+    - WEBSHARE_PROXY_PASSWORD: Webshare proxy password (defaults to configured value)
+    - WEBSHARE_FILTER_IP_LOCATIONS: Comma-separated list of country codes (e.g., "us,de,gb")
     
     Examples:
-    - PROXY_URL=http://user:pass@proxy.example.com:8080 (uses same proxy for both HTTP and HTTPS)
-    - PROXY_HTTP_URL=http://user:pass@proxy.example.com:8080
-    - PROXY_HTTPS_URL=https://user:pass@proxy.example.com:8080
+    - WEBSHARE_FILTER_IP_LOCATIONS=us,de (only use IPs from US and Germany)
+    - WEBSHARE_FILTER_IP_LOCATIONS=us (only use US IPs for lower latency)
     
-    Popular proxy services: ProxyMesh, Bright Data, Smartproxy, etc.
-    For best results, use services that automatically rotate proxy IPs.
-    
-    Note: Many proxies only support HTTP protocol. In this case, use PROXY_URL or set both
-    PROXY_HTTP_URL and PROXY_HTTPS_URL to the same HTTP URL.
+    For fallback, also supports generic proxy configuration:
+    - PROXY_URL: Generic proxy URL (format: http://username:password@proxy.example.com:port)
     """
+    # First, try Webshare proxy configuration
+    webshare_username = os.getenv('WEBSHARE_PROXY_USERNAME')
+    webshare_password = os.getenv('WEBSHARE_PROXY_PASSWORD')
+    filter_locations = os.getenv('WEBSHARE_FILTER_IP_LOCATIONS')
+    
+    if webshare_username and webshare_password:
+        print("Configuring YouTube Transcript API with Webshare rotating residential proxies")
+        print(f"  Username: {webshare_username}")
+        
+        try:
+            # Configure Webshare proxy
+            webshare_config_params = {
+                "proxy_username": webshare_username,
+                "proxy_password": webshare_password,
+            }
+            
+            # Add IP location filtering if specified
+            if filter_locations:
+                location_list = [loc.strip().lower() for loc in filter_locations.split(',')]
+                webshare_config_params["filter_ip_locations"] = location_list
+                print(f"  Filtering IPs to locations: {location_list}")
+            
+            proxy_config = WebshareProxyConfig(**webshare_config_params)
+            print("Webshare proxy configuration successful.")
+            return YouTubeTranscriptApi(proxy_config=proxy_config)
+            
+        except Exception as e:
+            print(f"Warning: Failed to configure Webshare proxy: {str(e)}")
+            print("Falling back to generic proxy configuration...")
+    
+    # Fallback to generic proxy configuration
     proxy_url = os.getenv('PROXY_URL')
     proxy_http_url = os.getenv('PROXY_HTTP_URL')
     proxy_https_url = os.getenv('PROXY_HTTPS_URL')
@@ -42,7 +69,7 @@ def create_youtube_transcript_api():
         print(f"Using single proxy URL for both HTTP and HTTPS: {proxy_url.split('@')[1] if '@' in proxy_url else proxy_url}")
     
     if proxy_http_url or proxy_https_url:
-        print(f"Configuring YouTube Transcript API with proxy:")
+        print(f"Configuring YouTube Transcript API with generic proxy:")
         if proxy_http_url:
             # Hide password in logs for security
             safe_http_url = proxy_http_url.split('@')[1] if '@' in proxy_http_url else proxy_http_url
@@ -57,11 +84,11 @@ def create_youtube_transcript_api():
                 http_url=proxy_http_url,
                 https_url=proxy_https_url,
             )
-            print("Proxy configuration successful.")
+            print("Generic proxy configuration successful.")
             return YouTubeTranscriptApi(proxy_config=proxy_config)
         except Exception as e:
             error_msg = str(e).lower()
-            print(f"Warning: Failed to configure proxy: {str(e)}")
+            print(f"Warning: Failed to configure generic proxy: {str(e)}")
             
             # If it's an HTTPS proxy error and we have HTTP proxy, try using HTTP for both
             if ("https" in error_msg or "ssl" in error_msg or "wrong_version_number" in error_msg) and proxy_http_url:

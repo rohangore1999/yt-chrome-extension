@@ -1,0 +1,1 @@
+chrome.action.onClicked.addListener(async e=>{try{await chrome.scripting.executeScript({target:{tabId:e.id},files:["src/content.js"]}),chrome.tabs.sendMessage(e.id,{action:"togglePopup"})}catch(r){console.error("Error injecting content script:",r)}});chrome.runtime.onMessage.addListener((e,r,t)=>{e.action,t({success:!0})});

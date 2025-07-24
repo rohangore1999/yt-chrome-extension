@@ -5,6 +5,14 @@ import { ApiKeyScreen } from "@/components/ApiKeyScreen";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import Popup from "@/components/Popup";
 
+// Storage utilities
+import {
+  getStorageValue,
+  setStorageValue,
+  removeStorageValue,
+  STORAGE_KEYS,
+} from "@/lib/storage";
+
 // Styles
 import "./Index.css";
 
@@ -14,18 +22,22 @@ const Index = () => {
 
   // Check for stored API key on mount
   useEffect(() => {
-    const storedApiKey = localStorage.getItem("gemini_api_key");
+    const loadApiKey = async () => {
+      const storedApiKey = await getStorageValue(STORAGE_KEYS.API_KEY);
+      if (storedApiKey) {
+        setApiKey(storedApiKey);
+      }
+    };
 
-    if (storedApiKey) {
-      setApiKey(storedApiKey);
-    }
+    loadApiKey();
   }, []);
 
-  const handleApiKeySubmit = (key) => {
+  const handleApiKeySubmit = async (key) => {
     setIsProcessing(true);
 
-    // Store API key in localStorage
-    localStorage.setItem("gemini_api_key", key);
+    // Store API key in Chrome storage
+    await setStorageValue(STORAGE_KEYS.API_KEY, key);
+    console.log("API key saved to Chrome storage");
 
     // Simulate data ingestion time
     setTimeout(() => {
@@ -34,9 +46,10 @@ const Index = () => {
     }, 3000);
   };
 
-  const handleApiKeyChange = () => {
-    // Clear API key from localStorage
-    localStorage.removeItem("gemini_api_key");
+  const handleApiKeyChange = async () => {
+    // Clear API key from Chrome storage
+    await removeStorageValue(STORAGE_KEYS.API_KEY);
+    console.log("API key removed from Chrome storage");
 
     setApiKey(null);
     setIsProcessing(false);
