@@ -17,10 +17,14 @@ def test_qdrant_connection():
     try:
         print("Testing Qdrant connection...", flush=True)
         print(f"Attempting to connect to: {QDRANT_URL}", flush=True)
+        print(f"Environment variables:", flush=True)
+        print(f"  QDRANT_URL: {os.getenv('QDRANT_URL')}", flush=True)
+        print(f"  RAILWAY_QDRANT_URL: {os.getenv('RAILWAY_QDRANT_URL')}", flush=True)
         
         # Try a simple HTTP request first - Qdrant doesn't have /health, use / instead
         if QDRANT_URL.startswith('http'):
             try:
+                print("Testing HTTP connection...", flush=True)
                 response = requests.get(f"{QDRANT_URL}/", timeout=10)
                 print(f"Root endpoint response status: {response.status_code}", flush=True)
                 if response.status_code == 200:
@@ -38,14 +42,32 @@ def test_qdrant_connection():
                 print(f"❌ HTTP request failed: {str(e)}", flush=True)
                 return False
         
+        # Test collections endpoint specifically
+        try:
+            print("Testing collections endpoint...", flush=True)
+            response = requests.get(f"{QDRANT_URL}/collections", timeout=10)
+            print(f"Collections endpoint response status: {response.status_code}", flush=True)
+            if response.status_code == 200:
+                data = response.json()
+                print(f"Collections response: {data}", flush=True)
+            else:
+                print(f"Collections endpoint failed with status: {response.status_code}", flush=True)
+        except Exception as e:
+            print(f"Collections endpoint test failed: {str(e)}", flush=True)
+        
         # Try Qdrant client connection with collections endpoint
-        test_client = QdrantClient(url=QDRANT_URL, timeout=10)
+        print("Testing QdrantClient connection...", flush=True)
+        test_client = QdrantClient(url=QDRANT_URL, timeout=30)  # Increased timeout
+        print("QdrantClient created, testing get_collections...", flush=True)
         collections = test_client.get_collections()
         print(f"✅ Successfully connected to Qdrant. Collections: {len(collections.collections)}", flush=True)
         return True
         
     except Exception as e:
         print(f"❌ Qdrant connection test failed: {str(e)}", flush=True)
+        print(f"Error type: {type(e).__name__}", flush=True)
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}", flush=True)
         return False
 
 # Test connection on import
@@ -53,7 +75,19 @@ test_qdrant_connection()
 
 # Simple configuration for local development
 try:
-    qdrant_client = QdrantClient(url=QDRANT_URL, timeout=30)  # Increased timeout
+    # Try different client configurations for Railway compatibility
+    if QDRANT_URL.startswith('https://'):
+        print("Using HTTPS configuration for QdrantClient", flush=True)
+        # For HTTPS, we might need different configuration
+        qdrant_client = QdrantClient(
+            url=QDRANT_URL, 
+            timeout=60,  # Increased timeout for Railway
+            # Add any additional HTTPS-specific config here if needed
+        )
+    else:
+        print("Using HTTP configuration for QdrantClient", flush=True)
+        qdrant_client = QdrantClient(url=QDRANT_URL, timeout=30)
+    
     print("✅ Qdrant client initialized successfully", flush=True)
 except Exception as e:
     print(f"❌ Failed to initialize Qdrant client: {str(e)}", flush=True)
