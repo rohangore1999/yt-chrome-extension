@@ -6,7 +6,10 @@ from qdrant_client.models import Distance, VectorParams
 import os
 
 # Initialize Qdrant client with environment variable support
-QDRANT_URL = os.getenv('QDRANT_URL', 'https://qdrant-production-0384.up.railway.app')
+QDRANT_URL = os.getenv('QDRANT_URL', 'http://localhost:6333')
+print(f"Connecting to Qdrant at: {QDRANT_URL}", flush=True)
+
+# Simple configuration for local development
 qdrant_client = QdrantClient(url=QDRANT_URL)
 
 def get_embeddings(api_key):
@@ -24,22 +27,29 @@ def ensure_collection_exists(collection_name: str, embedding_size: int = 768, re
     If recreate is True, it will delete and recreate the collection.
     """
     try:
+        print(f"Checking if collection '{collection_name}' exists...", flush=True)
+        
         # Check if collection exists
         collection_exists = False
         try:
+            print(f"Getting collection info for '{collection_name}'...", flush=True)
             collection_info = qdrant_client.get_collection(collection_name)
             collection_exists = True
-        except UnexpectedResponse:
+            print(f"Collection '{collection_name}' exists", flush=True)
+        except UnexpectedResponse as e:
+            print(f"Collection '{collection_name}' does not exist: {e}", flush=True)
             collection_exists = False
 
         # Handle recreation if needed
         if collection_exists and recreate:
-            print(f"Deleting existing collection {collection_name}")
+            print(f"Deleting existing collection {collection_name}", flush=True)
             qdrant_client.delete_collection(collection_name)
             collection_exists = False
+            print(f"Successfully deleted collection {collection_name}", flush=True)
         
         # Create collection if it doesn't exist
         if not collection_exists:
+            print(f"Creating collection '{collection_name}' with size {embedding_size}...", flush=True)
             qdrant_client.create_collection(
                 collection_name=collection_name,
                 vectors_config=VectorParams(
@@ -47,14 +57,14 @@ def ensure_collection_exists(collection_name: str, embedding_size: int = 768, re
                     distance=Distance.COSINE
                 )
             )
-            print(f"Successfully created collection: {collection_name}")
+            print(f"Successfully created collection: {collection_name}", flush=True)
         else:
-            print(f"Using existing collection: {collection_name}")
+            print(f"Using existing collection: {collection_name}", flush=True)
         
         return True
             
     except Exception as e:
-        print(f"Error in ensure_collection_exists: {str(e)}")
+        print(f"Error in ensure_collection_exists: {str(e)}", flush=True)
         return False
 
 def get_vector_store(api_key, recreate: bool = True):
@@ -75,7 +85,7 @@ def get_vector_store(api_key, recreate: bool = True):
             embedding=embeddings,
         )
     except Exception as e:
-        print(f"Error in get_vector_store: {str(e)}")
+        print(f"Error in get_vector_store: {str(e)}", flush=True)
         raise
 
 def get_relevant_transcript_chunks(query: str, api_key: str):
@@ -102,5 +112,5 @@ def store_documents_in_vector_db(docs, api_key):
         print(f"Successfully stored {len(docs)} documents in vector database")
         return True
     except Exception as e:
-        print(f"Vector store error: {str(e)}")
+        print(f"Vector store error: {str(e)}", flush=True)
         return False 
