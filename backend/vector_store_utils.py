@@ -6,7 +6,8 @@ from qdrant_client.models import Distance, VectorParams
 import os
 
 # Initialize Qdrant client with environment variable support
-QDRANT_URL = os.getenv('QDRANT_URL', 'http://localhost:6333')
+# For Railway deployment, use the internal service URL
+QDRANT_URL = os.getenv('QDRANT_URL') or 'http://localhost:6333'
 print(f"Connecting to Qdrant at: {QDRANT_URL}", flush=True)
 
 # Simple configuration for local development

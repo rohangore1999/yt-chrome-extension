@@ -37,7 +37,7 @@ export const getTranscript = async (videoId) => {
     console.log("Starting new transcript request for video:", videoId);
 
     const response = await fetch(
-      `http://localhost:8080/api/transcript?video_id=${videoId}`,
+      `https://yt-chrome-extension-production.up.railway.app/api/transcript?video_id=${videoId}`,
       {
         signal: controller.signal,
         headers: {
@@ -1224,15 +1224,18 @@ export const queryTranscript = async (query) => {
 
     console.log("Starting new query request:", query);
 
-    const response = await fetch("http://localhost:8080/api/query", {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
-      },
-      body: JSON.stringify({ query }),
-    });
+    const response = await fetch(
+      "https://yt-chrome-extension-production.up.railway.app/api/query",
+      {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": apiKey,
+        },
+        body: JSON.stringify({ query }),
+      }
+    );
 
     // Check if request was aborted
     if (controller.signal.aborted) {

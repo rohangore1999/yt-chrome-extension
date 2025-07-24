@@ -21,8 +21,9 @@ embeddings = GoogleGenerativeAIEmbeddings(
 )
 
 # Connect to existing Qdrant collection
+QDRANT_URL = os.getenv('QDRANT_URL') or 'http://localhost:6333'
 retrieval = QdrantVectorStore.from_existing_collection(
-    url="http://localhost:6333",
+    url=QDRANT_URL,
     collection_name="yt-rag",
     embedding=embeddings,
 )

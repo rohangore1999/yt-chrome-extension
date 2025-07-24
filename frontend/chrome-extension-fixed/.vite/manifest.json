@@ -1,12 +1,12 @@
 {
   "../../../../../../@crx/manifest": {
-    "file": "assets/crx-manifest.js-Cn0zfHXH.js",
+    "file": "assets/crx-manifest.js-CE52gxm5.js",
     "name": "crx-manifest.js",
     "src": "../../../../../../@crx/manifest",
     "isEntry": true
   },
   "index.html": {
-    "file": "assets/popup-GlfdnqVo.js",
+    "file": "assets/popup-DmQwVc0-.js",
     "name": "popup",
     "src": "index.html",
     "isEntry": true,
