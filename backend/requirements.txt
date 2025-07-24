@@ -1,6 +1,7 @@
 # Core web framework
 flask==3.0.2
 flask-cors==4.0.0
+requests==2.31.0
 
 # Environment configuration
 python-dotenv==1.1.0

@@ -4,14 +4,60 @@ from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Distance, VectorParams
 import os
+import time
+import requests
 
 # Initialize Qdrant client with environment variable support
 # For Railway deployment, use the internal service URL
-QDRANT_URL = os.getenv('QDRANT_URL') or 'http://localhost:6333'
+QDRANT_URL = os.getenv('QDRANT_URL') or os.getenv('RAILWAY_QDRANT_URL') or 'http://localhost:6333'
 print(f"Connecting to Qdrant at: {QDRANT_URL}", flush=True)
 
+def test_qdrant_connection():
+    """Test if Qdrant service is reachable"""
+    try:
+        print("Testing Qdrant connection...", flush=True)
+        print(f"Attempting to connect to: {QDRANT_URL}", flush=True)
+        
+        # Try a simple HTTP request first - Qdrant doesn't have /health, use / instead
+        if QDRANT_URL.startswith('http'):
+            try:
+                response = requests.get(f"{QDRANT_URL}/", timeout=10)
+                print(f"Root endpoint response status: {response.status_code}", flush=True)
+                if response.status_code == 200:
+                    try:
+                        data = response.json()
+                        if 'title' in data and 'qdrant' in data['title'].lower():
+                            print(f"✅ Qdrant service responding: {data.get('title', 'Unknown')} v{data.get('version', 'Unknown')}", flush=True)
+                        else:
+                            print(f"✅ Service responding but might not be Qdrant: {data}", flush=True)
+                    except:
+                        print("✅ Service responding but response not JSON", flush=True)
+                else:
+                    print(f"❌ Root endpoint failed with status: {response.status_code}", flush=True)
+            except requests.exceptions.RequestException as e:
+                print(f"❌ HTTP request failed: {str(e)}", flush=True)
+                return False
+        
+        # Try Qdrant client connection with collections endpoint
+        test_client = QdrantClient(url=QDRANT_URL, timeout=10)
+        collections = test_client.get_collections()
+        print(f"✅ Successfully connected to Qdrant. Collections: {len(collections.collections)}", flush=True)
+        return True
+        
+    except Exception as e:
+        print(f"❌ Qdrant connection test failed: {str(e)}", flush=True)
+        return False
+
+# Test connection on import
+test_qdrant_connection()
+
 # Simple configuration for local development
-qdrant_client = QdrantClient(url=QDRANT_URL)
+try:
+    qdrant_client = QdrantClient(url=QDRANT_URL, timeout=30)  # Increased timeout
+    print("✅ Qdrant client initialized successfully", flush=True)
+except Exception as e:
+    print(f"❌ Failed to initialize Qdrant client: {str(e)}", flush=True)
+    qdrant_client = None
 
 def get_embeddings(api_key):
     """
@@ -27,6 +73,10 @@ def ensure_collection_exists(collection_name: str, embedding_size: int = 768, re
     Ensures that the Qdrant collection exists, creates it if it doesn't.
     If recreate is True, it will delete and recreate the collection.
     """
+    if qdrant_client is None:
+        print("❌ Qdrant client not initialized, cannot ensure collection exists", flush=True)
+        return False
+        
     try:
         print(f"Checking if collection '{collection_name}' exists...", flush=True)
         
@@ -40,6 +90,9 @@ def ensure_collection_exists(collection_name: str, embedding_size: int = 768, re
         except UnexpectedResponse as e:
             print(f"Collection '{collection_name}' does not exist: {e}", flush=True)
             collection_exists = False
+        except Exception as e:
+            print(f"Error checking collection existence: {str(e)}", flush=True)
+            return False
 
         # Handle recreation if needed
         if collection_exists and recreate:
@@ -66,6 +119,7 @@ def ensure_collection_exists(collection_name: str, embedding_size: int = 768, re
             
     except Exception as e:
         print(f"Error in ensure_collection_exists: {str(e)}", flush=True)
+        print(f"Error type: {type(e).__name__}", flush=True)
         return False
 
 def get_vector_store(api_key, recreate: bool = True):
@@ -73,6 +127,9 @@ def get_vector_store(api_key, recreate: bool = True):
     Get or create vector store for the collection.
     If recreate is True, it will create a fresh collection.
     """
+    if qdrant_client is None:
+        raise Exception("Qdrant client not initialized - check QDRANT_URL environment variable")
+        
     try:
         # Try to ensure collection exists
         if not ensure_collection_exists("yt-rag", recreate=recreate):
@@ -87,6 +144,7 @@ def get_vector_store(api_key, recreate: bool = True):
         )
     except Exception as e:
         print(f"Error in get_vector_store: {str(e)}", flush=True)
+        print(f"Error type: {type(e).__name__}", flush=True)
         raise
 
 def get_relevant_transcript_chunks(query: str, api_key: str):
