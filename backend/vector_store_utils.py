@@ -6,6 +6,7 @@ from qdrant_client.models import Distance, VectorParams
 import os
 import time
 import requests
+import json
 
 # Initialize Qdrant client with environment variable support
 # For Railway deployment, use the internal service URL
@@ -78,17 +79,68 @@ try:
     # Try different client configurations for Railway compatibility
     if QDRANT_URL.startswith('https://'):
         print("Using HTTPS configuration for QdrantClient", flush=True)
-        # For HTTPS, we might need different configuration
-        qdrant_client = QdrantClient(
-            url=QDRANT_URL, 
-            timeout=60,  # Increased timeout for Railway
-            # Add any additional HTTPS-specific config here if needed
-        )
+        
+        # Try multiple configuration approaches for HTTPS
+        qdrant_client = None
+        
+        # Attempt 1: Standard HTTPS configuration
+        try:
+            print("Attempting standard HTTPS connection...", flush=True)
+            qdrant_client = QdrantClient(
+                url=QDRANT_URL, 
+                timeout=60,
+                # Try with explicit HTTPS settings
+                prefer_grpc=False  # Force HTTP API instead of gRPC
+            )
+            # Test the connection immediately
+            test_collections = qdrant_client.get_collections()
+            print("✅ Standard HTTPS connection successful", flush=True)
+        except Exception as e:
+            print(f"Standard HTTPS failed: {str(e)}", flush=True)
+            qdrant_client = None
+        
+        # Attempt 2: If standard fails, try with port specification
+        if qdrant_client is None:
+            try:
+                print("Attempting HTTPS with port 443...", flush=True)
+                # Railway HTTPS is on port 443
+                url_with_port = QDRANT_URL.replace('.app', '.app:443')
+                qdrant_client = QdrantClient(
+                    url=url_with_port,
+                    timeout=60,
+                    prefer_grpc=False
+                )
+                test_collections = qdrant_client.get_collections()
+                print("✅ HTTPS with port 443 successful", flush=True)
+            except Exception as e:
+                print(f"HTTPS with port failed: {str(e)}", flush=True)
+                qdrant_client = None
+        
+        # Attempt 3: Try HTTP instead of HTTPS (Railway might redirect)
+        if qdrant_client is None:
+            try:
+                print("Attempting HTTP fallback (Railway auto-redirects)...", flush=True)
+                http_url = QDRANT_URL.replace('https://', 'http://')
+                qdrant_client = QdrantClient(
+                    url=http_url,
+                    timeout=60,
+                    prefer_grpc=False
+                )
+                test_collections = qdrant_client.get_collections()
+                print("✅ HTTP fallback successful", flush=True)
+            except Exception as e:
+                print(f"HTTP fallback failed: {str(e)}", flush=True)
+                qdrant_client = None
+                
     else:
         print("Using HTTP configuration for QdrantClient", flush=True)
         qdrant_client = QdrantClient(url=QDRANT_URL, timeout=30)
     
-    print("✅ Qdrant client initialized successfully", flush=True)
+    if qdrant_client is not None:
+        print("✅ Qdrant client initialized successfully", flush=True)
+    else:
+        print("❌ All QdrantClient connection attempts failed, will use HTTP fallback", flush=True)
+        
 except Exception as e:
     print(f"❌ Failed to initialize Qdrant client: {str(e)}", flush=True)
     qdrant_client = None
@@ -102,14 +154,57 @@ def get_embeddings(api_key):
         google_api_key=api_key,
     )
 
+def create_collection_via_http(collection_name: str, embedding_size: int = 768):
+    """
+    Create collection using direct HTTP requests as fallback when qdrant-client fails
+    """
+    try:
+        # Check if collection exists
+        response = requests.get(f"{QDRANT_URL}/collections/{collection_name}", timeout=10)
+        
+        if response.status_code == 200:
+            print(f"Collection '{collection_name}' already exists (via HTTP)", flush=True)
+            return True
+        elif response.status_code == 404:
+            # Collection doesn't exist, create it
+            print(f"Creating collection '{collection_name}' via HTTP API...", flush=True)
+            
+            collection_config = {
+                "vectors": {
+                    "size": embedding_size,
+                    "distance": "Cosine"
+                }
+            }
+            
+            create_response = requests.put(
+                f"{QDRANT_URL}/collections/{collection_name}",
+                json=collection_config,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            
+            if create_response.status_code in [200, 201]:
+                print(f"✅ Successfully created collection '{collection_name}' via HTTP", flush=True)
+                return True
+            else:
+                print(f"❌ Failed to create collection via HTTP: {create_response.status_code} - {create_response.text}", flush=True)
+                return False
+        else:
+            print(f"❌ Unexpected response checking collection: {response.status_code}", flush=True)
+            return False
+            
+    except Exception as e:
+        print(f"❌ HTTP collection creation failed: {str(e)}", flush=True)
+        return False
+
 def ensure_collection_exists(collection_name: str, embedding_size: int = 768, recreate: bool = True):
     """
     Ensures that the Qdrant collection exists, creates it if it doesn't.
     If recreate is True, it will delete and recreate the collection.
     """
     if qdrant_client is None:
-        print("❌ Qdrant client not initialized, cannot ensure collection exists", flush=True)
-        return False
+        print("❌ Qdrant client not initialized, trying HTTP fallback...", flush=True)
+        return create_collection_via_http(collection_name, embedding_size)
         
     try:
         print(f"Checking if collection '{collection_name}' exists...", flush=True)
@@ -126,26 +221,39 @@ def ensure_collection_exists(collection_name: str, embedding_size: int = 768, re
             collection_exists = False
         except Exception as e:
             print(f"Error checking collection existence: {str(e)}", flush=True)
-            return False
+            print(f"Trying HTTP fallback for collection check...", flush=True)
+            return create_collection_via_http(collection_name, embedding_size)
 
         # Handle recreation if needed
         if collection_exists and recreate:
             print(f"Deleting existing collection {collection_name}", flush=True)
-            qdrant_client.delete_collection(collection_name)
-            collection_exists = False
-            print(f"Successfully deleted collection {collection_name}", flush=True)
+            try:
+                qdrant_client.delete_collection(collection_name)
+                collection_exists = False
+                print(f"Successfully deleted collection {collection_name}", flush=True)
+            except Exception as e:
+                print(f"Error deleting collection, trying HTTP: {str(e)}", flush=True)
+                # Try HTTP delete
+                delete_response = requests.delete(f"{QDRANT_URL}/collections/{collection_name}", timeout=10)
+                if delete_response.status_code in [200, 404]:
+                    collection_exists = False
+                    print(f"Successfully deleted collection via HTTP", flush=True)
         
         # Create collection if it doesn't exist
         if not collection_exists:
             print(f"Creating collection '{collection_name}' with size {embedding_size}...", flush=True)
-            qdrant_client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(
-                    size=embedding_size,
-                    distance=Distance.COSINE
+            try:
+                qdrant_client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=VectorParams(
+                        size=embedding_size,
+                        distance=Distance.COSINE
+                    )
                 )
-            )
-            print(f"Successfully created collection: {collection_name}", flush=True)
+                print(f"Successfully created collection: {collection_name}", flush=True)
+            except Exception as e:
+                print(f"Error creating collection via client, trying HTTP: {str(e)}", flush=True)
+                return create_collection_via_http(collection_name, embedding_size)
         else:
             print(f"Using existing collection: {collection_name}", flush=True)
         
@@ -154,7 +262,8 @@ def ensure_collection_exists(collection_name: str, embedding_size: int = 768, re
     except Exception as e:
         print(f"Error in ensure_collection_exists: {str(e)}", flush=True)
         print(f"Error type: {type(e).__name__}", flush=True)
-        return False
+        print(f"Trying HTTP fallback...", flush=True)
+        return create_collection_via_http(collection_name, embedding_size)
 
 def get_vector_store(api_key, recreate: bool = True):
     """
