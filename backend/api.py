@@ -30,56 +30,6 @@ text_splitter = RecursiveCharacterTextSplitter(
     length_function=len,
 )
 
-@app.route('/api/debug', methods=['GET'])
-def debug_connection():
-    """
-    Debug endpoint to test Qdrant connectivity from Railway
-    """
-    try:
-        import os
-        import requests
-        from vector_store_utils import QDRANT_URL, test_qdrant_connection
-        
-        debug_info = {
-            "environment_vars": {
-                "QDRANT_URL": os.getenv('QDRANT_URL'),
-                "RAILWAY_QDRANT_URL": os.getenv('RAILWAY_QDRANT_URL'),
-            },
-            "computed_url": QDRANT_URL,
-            "connection_test": None,
-            "http_test": None,
-            "error": None
-        }
-        
-        # Test basic HTTP connection
-        try:
-            response = requests.get(f"{QDRANT_URL}/", timeout=10)
-            debug_info["http_test"] = {
-                "status_code": response.status_code,
-                "success": response.status_code == 200,
-                "response_preview": str(response.text)[:200] if response.text else None
-            }
-        except Exception as e:
-            debug_info["http_test"] = {
-                "error": str(e),
-                "error_type": type(e).__name__
-            }
-        
-        # Test Qdrant connection
-        debug_info["connection_test"] = test_qdrant_connection()
-        
-        return jsonify({
-            "success": True,
-            "debug_info": debug_info
-        })
-        
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "error_type": type(e).__name__
-        }), 500
-
 @app.route('/api/transcript', methods=['GET'])
 def get_transcript():
     """
