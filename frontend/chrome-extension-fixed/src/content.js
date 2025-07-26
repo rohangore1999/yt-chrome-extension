@@ -135,7 +135,10 @@ const closePopup = () => {
 
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "togglePopup") {
+  if (request.action === "ping") {
+    // Respond to ping to confirm content script is present
+    sendResponse({ present: true });
+  } else if (request.action === "togglePopup") {
     togglePopup();
     sendResponse({ success: true });
   } else if (request.action === "closePopup") {

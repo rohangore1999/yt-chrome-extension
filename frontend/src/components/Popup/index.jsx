@@ -71,7 +71,7 @@ const Popup = ({ onApiKeyChange }) => {
     setIsLoading(true);
 
     try {
-      const response = await queryTranscript(textToSend);
+      const response = await queryTranscript(textToSend, videoId);
 
       if (response.success) {
         const aiMessage = {
