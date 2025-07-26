@@ -199,8 +199,6 @@ def get_transcript_safely(video_id, languages, ytt_api):
         print(f"Video ID: {video_id}")
         transcript_list = ytt_api.list(video_id)
         
-        print(f"Transcript list >>> {transcript_list}")
-        
         # Initialize list to store transcript data
         transcript_data = []
         detected_lang = None
