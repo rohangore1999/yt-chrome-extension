@@ -197,7 +197,7 @@ def create_collection_via_http(collection_name: str, embedding_size: int = 768):
         print(f"❌ HTTP collection creation failed: {str(e)}", flush=True)
         return False
 
-def ensure_collection_exists(collection_name: str, embedding_size: int = 768, recreate: bool = True):
+def ensure_collection_exists(collection_name: str, embedding_size: int = 768, recreate: bool = False):
     """
     Ensures that the Qdrant collection exists, creates it if it doesn't.
     If recreate is True, it will delete and recreate the collection.
@@ -265,24 +265,25 @@ def ensure_collection_exists(collection_name: str, embedding_size: int = 768, re
         print(f"Trying HTTP fallback...", flush=True)
         return create_collection_via_http(collection_name, embedding_size)
 
-def get_vector_store(api_key, recreate: bool = True):
+def get_vector_store(api_key, collection_name="yt-rag", recreate: bool = False):
     """
     Get or create vector store for the collection.
-    If recreate is True, it will create a fresh collection.
+    If recreate is True, it will delete and create a fresh collection.
+    If recreate is False (default), it will use existing collection or create if doesn't exist.
     """
     if qdrant_client is None:
         raise Exception("Qdrant client not initialized - check QDRANT_URL environment variable")
         
     try:
         # Try to ensure collection exists
-        if not ensure_collection_exists("yt-rag", recreate=recreate):
+        if not ensure_collection_exists(collection_name, recreate=recreate):
             raise Exception("Failed to create or verify collection")
         
         # Initialize vector store with provided API key
         embeddings = get_embeddings(api_key)
         return QdrantVectorStore(
             client=qdrant_client,
-            collection_name="yt-rag",
+            collection_name=collection_name,
             embedding=embeddings,
         )
     except Exception as e:
@@ -290,26 +291,40 @@ def get_vector_store(api_key, recreate: bool = True):
         print(f"Error type: {type(e).__name__}", flush=True)
         raise
 
-def get_relevant_transcript_chunks(query: str, api_key: str):
+def get_relevant_transcript_chunks(query: str, api_key: str, collection_name: str):
     """
     Retrieve semantically relevant chunks of the video transcript based on the query.
     """
     try:
         # Use existing vector store (transcript should already be processed)
-        vector_store = get_vector_store(api_key, recreate=False)
+        vector_store = get_vector_store(api_key, collection_name, recreate=False)
         return vector_store.similarity_search(query=query)
     except Exception as e:
         print(f"Error during similarity search: {e}")
         # Return empty list if no vector store exists yet
         return []
 
-def store_documents_in_vector_db(docs, api_key):
+def store_documents_in_vector_db(docs, api_key, collection_name):
     """
     Store documents in vector database
     """
     try:
         print(f"\n=== Storing in Vector Database ===")
-        vector_store = get_vector_store(api_key, recreate=True)
+        print(f"Collection name: {collection_name}")
+        
+        # Use existing collection if it exists, don't recreate
+        vector_store = get_vector_store(api_key, collection_name, recreate=False)
+        
+        # Check if collection already has documents
+        try:
+            existing_docs = vector_store.similarity_search("", k=1)
+            if existing_docs:
+                print(f"Collection {collection_name} already has {len(existing_docs)} document(s), appending new documents")
+            else:
+                print(f"Collection {collection_name} is empty, adding documents")
+        except Exception as e:
+            print(f"Could not check existing documents: {str(e)}")
+        
         vector_store.add_documents(documents=docs)
         print(f"Successfully stored {len(docs)} documents in vector database")
         return True

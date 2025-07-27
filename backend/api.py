@@ -102,15 +102,16 @@ def get_transcript():
         }), 400
         
     # Get transcript from YouTube
+    collection_name = video_id
     result = get_transcript_safely(video_id, languages, ytt_api)
     
     if not result.get('success'):
         return jsonify(result)
     
-    # Store documents in vector database
+    # Store documents in vector database using video_id as collection name
     docs = result.get('docs', [])
     if docs:
-        storage_success = store_documents_in_vector_db(docs, api_key)
+        storage_success = store_documents_in_vector_db(docs, api_key, collection_name)
         if storage_success:
             result['chunks_processed'] = len(docs)
         else:
@@ -125,7 +126,7 @@ def get_transcript():
         try:
             # Get relevant chunks from vector database for question generation
             broad_query = "main topics discussed content overview summary"
-            relevant_chunks = get_relevant_transcript_chunks(broad_query, api_key)
+            relevant_chunks = get_relevant_transcript_chunks(broad_query, api_key, collection_name)
             
             # Generate questions using AI
             quick_questions = generate_quick_questions(relevant_chunks, api_key)
@@ -135,6 +136,10 @@ def get_transcript():
             print(f"Error generating quick questions: {str(e)}")
             # Continue without questions if generation fails
             result['quick-questions'] = []
+    
+    # Remove data from result before returning
+    if 'data' in result:
+        del result['data']
     
     return jsonify(result)
 
@@ -159,10 +164,19 @@ def query_transcript():
                 "error": "Missing API key in X-API-Key header"
             }), 400
 
+        # Get video_id from request body to determine which collection to query
+        video_id = data.get('video_id')
+        if not video_id:
+            return jsonify({
+                "success": False,
+                "error": "Missing video_id in request body"
+            }), 400
+
         user_query = data['query']
+        collection_name = video_id
         
         # Get relevant chunks from vector database
-        relevant_chunks = get_relevant_transcript_chunks(user_query, api_key)
+        relevant_chunks = get_relevant_transcript_chunks(user_query, api_key, collection_name)
         
         # Generate AI response
         response_data = get_ai_response(user_query, relevant_chunks, api_key)

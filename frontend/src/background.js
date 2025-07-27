@@ -2,17 +2,29 @@
 // This fires when user clicks the extension icon
 chrome.action.onClicked.addListener(async (tab) => {
   try {
-    // Inject the content script if not already injected
-    await chrome.scripting.executeScript({
-      // Specifies WHERE to inject the script
-      target: { tabId: tab.id }, // tabId is the ID of the tab where the script will be injected
-      files: ["src/content.js"], // Specifies WHAT to inject
-    });
+    // First, try to send a message to check if content script is already injected
+    try {
+      await chrome.tabs.sendMessage(tab.id, { action: "ping" });
+      console.log("Content script already present, sending toggle message");
 
-    // Send message to toggle the popup overlay
-    chrome.tabs.sendMessage(tab.id, { action: "togglePopup" });
+      // Content script exists, just toggle the popup
+      chrome.tabs.sendMessage(tab.id, { action: "togglePopup" });
+    } catch (pingError) {
+      // Content script not present, inject it first
+      console.log("Content script not found, injecting...");
+
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["src/content.js"],
+      });
+
+      // Give content script a moment to initialize, then toggle popup
+      setTimeout(() => {
+        chrome.tabs.sendMessage(tab.id, { action: "togglePopup" });
+      }, 100);
+    }
   } catch (error) {
-    console.error("Error injecting content script:", error);
+    console.error("Error in extension click handler:", error);
   }
 });
 
