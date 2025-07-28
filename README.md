@@ -4,6 +4,9 @@
 
 This is a Chrome extension that enables users to have AI-powered conversations with YouTube videos using a RAG (Retrieval-Augmented Generation) system. The system extracts video transcripts, processes them through vector embeddings, and provides contextual AI responses.
 
+### **System Design Pattern**
+![architecture](./media/Architecture.png "Architecture")
+
 ## Architecture Components
 
 ### Frontend (Chrome Extension)
