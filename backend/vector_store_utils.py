@@ -46,8 +46,10 @@ def test_qdrant_connection():
         # Test collections endpoint specifically
         try:
             print("Testing collections endpoint...", flush=True)
+            http_start = time.perf_counter()
             response = requests.get(f"{QDRANT_URL}/collections", timeout=10)
-            print(f"Collections endpoint response status: {response.status_code}", flush=True)
+            http_ms = int((time.perf_counter() - http_start) * 1000)
+            print(f"Collections endpoint response status: {response.status_code} in {http_ms} ms", flush=True)
             if response.status_code == 200:
                 data = response.json()
                 print(f"Collections response: {data}", flush=True)
@@ -58,10 +60,14 @@ def test_qdrant_connection():
         
         # Try Qdrant client connection with collections endpoint
         print("Testing QdrantClient connection...", flush=True)
+        client_start = time.perf_counter()
         test_client = QdrantClient(url=QDRANT_URL, timeout=30)  # Increased timeout
-        print("QdrantClient created, testing get_collections...", flush=True)
+        create_ms = int((time.perf_counter() - client_start) * 1000)
+        print(f"QdrantClient created in {create_ms} ms, testing get_collections...", flush=True)
+        list_start = time.perf_counter()
         collections = test_client.get_collections()
-        print(f"✅ Successfully connected to Qdrant. Collections: {len(collections.collections)}", flush=True)
+        list_ms = int((time.perf_counter() - list_start) * 1000)
+        print(f"✅ Successfully connected to Qdrant. Collections: {len(collections.collections)} (listed in {list_ms} ms)", flush=True)
         return True
         
     except Exception as e:
@@ -71,8 +77,11 @@ def test_qdrant_connection():
         print(f"Full traceback: {traceback.format_exc()}", flush=True)
         return False
 
-# Test connection on import
+# Test connection on import with timing
+_tc_start = time.perf_counter()
 test_qdrant_connection()
+_tc_ms = int((time.perf_counter() - _tc_start) * 1000)
+print(f"⏱️ Qdrant connection test on import took {_tc_ms} ms", flush=True)
 
 # Simple configuration for local development
 try:
@@ -86,6 +95,7 @@ try:
         # Attempt 1: Standard HTTPS configuration
         try:
             print("Attempting standard HTTPS connection...", flush=True)
+            _cstart = time.perf_counter()
             qdrant_client = QdrantClient(
                 url=QDRANT_URL, 
                 timeout=60,
@@ -94,7 +104,8 @@ try:
             )
             # Test the connection immediately
             test_collections = qdrant_client.get_collections()
-            print("✅ Standard HTTPS connection successful", flush=True)
+            _cms = int((time.perf_counter() - _cstart) * 1000)
+            print(f"✅ Standard HTTPS connection successful in {_cms} ms", flush=True)
         except Exception as e:
             print(f"Standard HTTPS failed: {str(e)}", flush=True)
             qdrant_client = None
@@ -105,13 +116,15 @@ try:
                 print("Attempting HTTPS with port 443...", flush=True)
                 # Railway HTTPS is on port 443
                 url_with_port = QDRANT_URL.replace('.app', '.app:443')
+                _cstart = time.perf_counter()
                 qdrant_client = QdrantClient(
                     url=url_with_port,
                     timeout=60,
                     prefer_grpc=False
                 )
                 test_collections = qdrant_client.get_collections()
-                print("✅ HTTPS with port 443 successful", flush=True)
+                _cms = int((time.perf_counter() - _cstart) * 1000)
+                print(f"✅ HTTPS with port 443 successful in {_cms} ms", flush=True)
             except Exception as e:
                 print(f"HTTPS with port failed: {str(e)}", flush=True)
                 qdrant_client = None
@@ -121,20 +134,25 @@ try:
             try:
                 print("Attempting HTTP fallback (Railway auto-redirects)...", flush=True)
                 http_url = QDRANT_URL.replace('https://', 'http://')
+                _cstart = time.perf_counter()
                 qdrant_client = QdrantClient(
                     url=http_url,
                     timeout=60,
                     prefer_grpc=False
                 )
                 test_collections = qdrant_client.get_collections()
-                print("✅ HTTP fallback successful", flush=True)
+                _cms = int((time.perf_counter() - _cstart) * 1000)
+                print(f"✅ HTTP fallback successful in {_cms} ms", flush=True)
             except Exception as e:
                 print(f"HTTP fallback failed: {str(e)}", flush=True)
                 qdrant_client = None
                 
     else:
         print("Using HTTP configuration for QdrantClient", flush=True)
+        _cstart = time.perf_counter()
         qdrant_client = QdrantClient(url=QDRANT_URL, timeout=30)
+        _cms = int((time.perf_counter() - _cstart) * 1000)
+        print(f"QdrantClient initialized in {_cms} ms", flush=True)
     
     if qdrant_client is not None:
         print("✅ Qdrant client initialized successfully", flush=True)
@@ -153,6 +171,51 @@ def get_embeddings(api_key):
         model="models/embedding-001",
         google_api_key=api_key,
     )
+
+def get_collection_point_count(collection_name: str) -> int:
+    """
+    Fast count of points in a collection without initializing embeddings or vector store.
+    Tries qdrant client first; falls back to HTTP if needed.
+    """
+    try:
+        if qdrant_client is None:
+            # HTTP fallback
+            try:
+                response = requests.post(
+                    f"{QDRANT_URL}/collections/{collection_name}/points/count",
+                    json={"exact": False},
+                    timeout=10,
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    return int(data.get("result", {}).get("count", 0))
+            except Exception:
+                return 0
+            return 0
+        
+        # Prefer client method
+        count_response = qdrant_client.count(
+            collection_name=collection_name,
+            count_filter=None,
+            exact=False,
+        )
+        
+        # qdrant-client returns object with .count
+        return int(getattr(count_response, "count", 0))
+    except Exception as e:
+        print(f"Count via client failed: {str(e)}; trying HTTP fallback", flush=True)
+        try:
+            response = requests.post(
+                f"{QDRANT_URL}/collections/{collection_name}/points/count",
+                json={"exact": False},
+                timeout=10,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return int(data.get("result", {}).get("count", 0))
+        except Exception as e2:
+            print(f"Count via HTTP fallback failed: {str(e2)}", flush=True)
+        return 0
 
 def create_collection_via_http(collection_name: str, embedding_size: int = 768):
     """
@@ -276,11 +339,17 @@ def get_vector_store(api_key, collection_name="yt-rag", recreate: bool = False):
         
     try:
         # Try to ensure collection exists
+        start_ensure = time.perf_counter()
         if not ensure_collection_exists(collection_name, recreate=recreate):
             raise Exception("Failed to create or verify collection")
+        ensure_ms = int((time.perf_counter() - start_ensure) * 1000)
+        print(f"⏱️ ensure_collection_exists('{collection_name}') took {ensure_ms} ms", flush=True)
         
         # Initialize vector store with provided API key
+        emb_start = time.perf_counter()
         embeddings = get_embeddings(api_key)
+        emb_ms = int((time.perf_counter() - emb_start) * 1000)
+        print(f"⏱️ Embeddings init took {emb_ms} ms", flush=True)
         return QdrantVectorStore(
             client=qdrant_client,
             collection_name=collection_name,
@@ -291,14 +360,21 @@ def get_vector_store(api_key, collection_name="yt-rag", recreate: bool = False):
         print(f"Error type: {type(e).__name__}", flush=True)
         raise
 
-def get_relevant_transcript_chunks(query: str, api_key: str, collection_name: str):
+def get_relevant_transcript_chunks(query: str, api_key: str, collection_name: str, k: int = 4):
     """
     Retrieve semantically relevant chunks of the video transcript based on the query.
     """
     try:
         # Use existing vector store (transcript should already be processed)
+        vs_start = time.perf_counter()
         vector_store = get_vector_store(api_key, collection_name, recreate=False)
-        return vector_store.similarity_search(query=query)
+        vs_ms = int((time.perf_counter() - vs_start) * 1000)
+        print(f"⏱️ get_vector_store('{collection_name}') took {vs_ms} ms", flush=True)
+        ss_start = time.perf_counter()
+        results = vector_store.similarity_search(query=query, k=k)
+        ss_ms = int((time.perf_counter() - ss_start) * 1000)
+        print(f"⏱️ similarity_search took {ss_ms} ms (k={k}, query='{query[:40]}...')", flush=True)
+        return results
     except Exception as e:
         print(f"Error during similarity search: {e}")
         # Return empty list if no vector store exists yet
@@ -313,7 +389,10 @@ def store_documents_in_vector_db(docs, api_key, collection_name):
         print(f"Collection name: {collection_name}")
         
         # Use existing collection if it exists, don't recreate
+        vs_start = time.perf_counter()
         vector_store = get_vector_store(api_key, collection_name, recreate=False)
+        vs_ms = int((time.perf_counter() - vs_start) * 1000)
+        print(f"⏱️ get_vector_store for storage took {vs_ms} ms", flush=True)
         
         # Check if collection already has documents
         try:
@@ -325,8 +404,10 @@ def store_documents_in_vector_db(docs, api_key, collection_name):
         except Exception as e:
             print(f"Could not check existing documents: {str(e)}")
         
+        add_start = time.perf_counter()
         vector_store.add_documents(documents=docs)
-        print(f"Successfully stored {len(docs)} documents in vector database")
+        add_ms = int((time.perf_counter() - add_start) * 1000)
+        print(f"Successfully stored {len(docs)} documents in vector database in {add_ms} ms")
         return True
     except Exception as e:
         print(f"Vector store error: {str(e)}", flush=True)

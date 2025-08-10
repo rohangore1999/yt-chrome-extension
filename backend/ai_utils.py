@@ -1,6 +1,7 @@
 import google.generativeai as genai
 import ast
 import re
+import time
 from utils import format_timestamp
 
 def get_ai_response(query: str, chunks, api_key: str):
@@ -46,7 +47,10 @@ def get_ai_response(query: str, chunks, api_key: str):
     User Question: {query}
     """
 
+    gen_start = time.perf_counter()
     response = model.generate_content(system_prompt)
+    gen_ms = int((time.perf_counter() - gen_start) * 1000)
+    print(f"⏱️ Gemini answer generation took {gen_ms} ms", flush=True)
     
     # Process response to ensure timestamps are properly formatted
     processed_response = response.text
@@ -66,7 +70,10 @@ def get_ai_response(query: str, chunks, api_key: str):
     # Return structured response with actual timestamps from chunks
     return {
         "content": processed_response,
-        "timestamps": found_timestamps
+        "timestamps": found_timestamps,
+        "timings": {
+            "gemini_generation_ms": gen_ms
+        }
     }
 
 def generate_quick_questions(relevant_chunks, api_key: str):
@@ -77,49 +84,31 @@ def generate_quick_questions(relevant_chunks, api_key: str):
         if not relevant_chunks:
             return []
             
-        # Configure Gemini for question generation
+        # Configure Gemini for question generation (faster model)
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.5-pro')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # Format chunks for context
+        # Format trimmed chunks for context (limit to first 2 chunks, truncate text)
         formatted_chunks = []
-        for chunk in relevant_chunks:
+        MAX_CHUNKS = 2
+        MAX_CHARS = 800
+        for chunk in relevant_chunks[:MAX_CHUNKS]:
             timestamp = chunk.metadata.get('start_time', 0)
-            translated_text = chunk.page_content
-            
-            formatted_chunks.append(f"""
-            [{format_timestamp(timestamp)}]
-            Content: {translated_text}
-            """)
+            translated_text = chunk.page_content[:MAX_CHARS]
+            formatted_chunks.append(f"[{format_timestamp(timestamp)}] {translated_text}")
         
         # Create prompt for generating quick questions
-        questions_prompt = f"""
-        You are an expert content analyzer who creates engaging questions based on video content.
-        
-        Based on the provided video transcript content, generate exactly 3 quick questions that:
-        1. Cover different aspects/topics of the video
-        2. Are interesting and engaging for viewers
-        3. Help users understand the main content
-        4. Are specific enough to be answerable from the video
-        5. Vary in complexity (some simple, some deeper)
-        
-        IMPORTANT: 
-        - Return ONLY a list of exactly 3 questions
-        - Each question should be a string
-        - Do not include any other text, explanations, or formatting
-        - The response should be valid list syntax
-        
-        Example format:
-        ["Question 1?", "Question 2?", "Question 3?"]
-        
-        Available Video Content:
-        {chr(10).join(formatted_chunks)}
-        
-        Generate exactly 3 diverse, engaging questions about this video content:
-        """
+        questions_prompt = (
+            "Generate exactly 3 short, engaging questions about the following video content. "
+            "Return ONLY a JSON list of strings (no extra text):\n"
+            f"Context:\n{chr(10).join(formatted_chunks)}\n"
+        )
         
         # Generate questions using Gemini
+        gen_start = time.perf_counter()
         questions_response = model.generate_content(questions_prompt)
+        gen_ms = int((time.perf_counter() - gen_start) * 1000)
+        print(f"⏱️ Gemini quick-questions generation took {gen_ms} ms", flush=True)
         
         try:
             # Parse the response as a list

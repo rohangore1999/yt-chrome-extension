@@ -5,6 +5,7 @@
 This is a Chrome extension that enables users to have AI-powered conversations with YouTube videos using a RAG (Retrieval-Augmented Generation) system. The system extracts video transcripts, processes them through vector embeddings, and provides contextual AI responses.
 
 ### **System Design Pattern**
+
 ![architecture](./media/Architecture.png "Architecture")
 
 ## Architecture Components
@@ -348,3 +349,144 @@ App.jsx
 - **Memory management**: Proper cleanup and disposal
 
 This comprehensive flow ensures robust, scalable operation across all system components while maintaining excellent user experience and technical reliability.
+
+---
+
+## Performance Enhancements (Before vs After)
+
+### What we changed
+
+- Added precise timing instrumentation across the backend to identify bottlenecks.
+- Skipped transcript fetch and storage when the vector collection already exists (fast count check).
+- Generated quick questions using a faster model and a smaller prompt.
+- Reduced similarity search work for quick questions by limiting results.
+
+### Before (typical timings from logs)
+
+- Transcript endpoint (`/api/transcript`):
+  - Transcript list fetch: ~5.0s
+  - Vector DB storage (including init): ~8.8s
+  - Quick-questions similarity: ~9.9s
+  - Quick-questions Gemini generation: ~19.7s
+  - Total: ~45.6s
+
+### After (expected)
+
+- If collection exists (skip-ingest path):
+  - Count check: ~1–20ms
+  - Quick-questions similarity (k=2): ~0.5–2s (depends on network/Qdrant)
+  - Quick-questions generation with `gemini-1.5-flash` and trimmed prompt: ~3–6s
+  - Total: ~4–8s, without touching YouTube or re-storing vectors
+
+Note: First-time videos still perform ingestion. Repeat calls benefit most from the skip-ingest path.
+
+### Where in code
+
+- `backend/api.py`
+
+  - Early-exit on existing collection using `get_collection_point_count(...)`.
+  - Timers added for storage, quick-questions similarity, quick-questions generation, and total endpoint time.
+  - Returns timings in JSON for both `/api/transcript` and `/api/query`.
+
+- `backend/vector_store_utils.py`
+
+  - `get_collection_point_count(...)`: fast point count via client with HTTP fallback.
+  - `get_relevant_transcript_chunks(..., k)`: allows limiting results (uses `k=2` for quick-questions).
+  - Detailed timers for collection ensure, embeddings init, vector store init, similarity search, and add_documents.
+
+- `backend/ai_utils.py`
+
+  - Quick-questions model switched to `gemini-1.5-flash` (faster).
+  - Prompt trimmed to first 2 chunks, each truncated to 800 chars.
+  - Timing logs added around Gemini calls.
+
+- `backend/youtube_utils.py`
+  - Timers added for transcript list fetch, per-transcript fetch, and processing pipeline.
+
+### What changes appear in API responses
+
+- `/api/transcript` now includes a `timings` object. Example (skip-ingest path):
+
+```json
+{
+  "success": true,
+  "quick-questions": ["...", "...", "..."],
+  "timings": {
+    "existing_collection_count_ms": 12,
+    "quick_similarity_search_ms": 740,
+    "quick_question_generation_ms": 4280,
+    "total_endpoint_ms": 5480,
+    "skipped_ingest": true
+  }
+}
+```
+
+- `/api/query` includes:
+
+```json
+{
+  "timings": {
+    "similarity_search_ms": 2175,
+    "ai_generation_ms": 14612
+  }
+}
+```
+
+### How to verify improvements
+
+- Run the same video twice:
+  - First run ingests transcript and stores vectors (slower).
+  - Second run should log the skip-ingest path and return significantly faster with quick questions.
+- Watch backend logs for ⏱️ lines and compare totals.
+
+### Future improvements
+
+- Use a faster model for main answers in `/api/query` (e.g., `gemini-1.5-flash`) or stream responses for better perceived latency.
+- Cache vector store instances per `(api_key, collection_name)` to avoid re-initialization overhead.
+- Tune Qdrant (co-location, gRPC, search params) for sub-300ms retrieval.
+
+## Hindi → English Translation Reliability Enhancements
+
+### Before
+
+- **Per-entry translation**: Each small caption line was translated individually in `get_transcript_safely(...)`.
+- **Blocking call**: `deep_translator` uses an internal HTTP request without an exposed timeout. If Google was slow or blocked, a single translate call could hang.
+- **Cascading delay**: Many small calls could accumulate delays. When total time exceeded Gunicorn's `--timeout` (120s), the worker was killed, failing the `/api/transcript` request.
+
+### What changed (simple)
+
+- **Translate fewer, larger chunks**: We translate the final text chunks in `process_transcript_entries(...)` instead of every line.
+- **Hard timeout per translation**: Each translate runs in a separate process with a strict timeout. If it runs long, we terminate it and move on.
+- **Circuit breaker per request**: After the first timeout, we skip further translations during the same request to avoid repeated stalls.
+- **Bound input size**: We cap the characters sent to the translator to keep calls fast and predictable.
+
+### After
+
+- One slow Google response can no longer stall the entire request.
+- Fewer network calls → lower latency and fewer chances of rate limiting or SSL stalls.
+- If translation is unhealthy, we gracefully fall back to the original text and still complete ingestion and quick-questions.
+
+### Where in code
+
+- `backend/youtube_utils.py`
+  - `safe_translate_text(text, disable_flag)`: runs translation in a separate process with a hard timeout and a per-request circuit breaker.
+  - `process_transcript_entries(...)`: performs translation at chunk level; greatly reduces the number of translate calls.
+  - `get_transcript_safely(...)`: no longer translates per entry; preserves original text so chunk-level translation can occur.
+
+### Configuration knobs
+
+- `TRANSLATION_TIMEOUT_SECONDS` (default: 5): Max seconds to wait for a chunk translation.
+- `MAX_TRANSLATION_CHARS` (default: 3000): Max characters sent per translate call.
+- `DISABLE_TRANSLATION` (default: false): Set to `true` to bypass translation entirely (useful for debugging or constrained networks).
+
+### Operational notes
+
+- Local `docker-compose` mounts source (`.:/app`) and runs Gunicorn with `--reload`, so these changes hot-reload; no rebuild is needed locally. If changes aren’t reflected, restart the backend service.
+- In production images (no volume mount/hot-reload), rebuild and redeploy as usual.
+
+### Troubleshooting
+
+- If you still encounter timeouts:
+  - Lower `TRANSLATION_TIMEOUT_SECONDS` (e.g., 3) and/or `MAX_TRANSLATION_CHARS` (e.g., 800).
+  - Temporarily set `DISABLE_TRANSLATION=true` to validate the rest of the pipeline.
+  - Ensure network egress to Google is allowed or configure HTTP(S) proxy env vars if required by your environment.
