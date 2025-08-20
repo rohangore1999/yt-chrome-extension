@@ -109,12 +109,19 @@ def get_ai_response(query: str, chunks, api_key: str, model="gemini-flash"):
     """
 
     gen_start = time.perf_counter()
-    response = generative_model.generate_content(system_prompt)
+    response = None
+    try:
+        response = generative_model.generate_content(system_prompt)
+    except Exception as gen_err:
+        # Log and proceed to fallback
+        print(f"Primary model '{gemini_model_name}' generation error: {str(gen_err)}", flush=True)
     gen_ms = int((time.perf_counter() - gen_start) * 1000)
     print(f"⏱️ Gemini answer generation took {gen_ms} ms with model {gemini_model_name}", flush=True)
 
-    # Safely extract text. If empty, try a single fallback to a public model
-    processed_response, finish_reason, prompt_feedback = _extract_text_from_gemini_response(response)
+    # Safely extract text. If empty or response missing, try a single fallback to a public model
+    processed_response, finish_reason, prompt_feedback = ("", None, None)
+    if response is not None:
+        processed_response, finish_reason, prompt_feedback = _extract_text_from_gemini_response(response)
 
     if not processed_response:
         print(f"⚠️ No text returned (finish_reason={finish_reason}). Retrying with fallback model.", flush=True)
@@ -130,9 +137,10 @@ def get_ai_response(query: str, chunks, api_key: str, model="gemini-flash"):
             print(f"Fallback generation error: {str(fb_e)}", flush=True)
 
     if not processed_response:
-        # Surface a clear, actionable error to the caller
-        raise ValueError(
-            f"Model returned no text. finish_reason={finish_reason} prompt_feedback={prompt_feedback}"
+        # Do not raise; return a friendly message so the API layer can still succeed
+        processed_response = (
+            "I'm sorry, I couldn't generate a response right now. "
+            "Please try again, switch to 'gemini-flash', or rephrase your question."
         )
     
     # Extract all timestamps from the response for the timestamps array
