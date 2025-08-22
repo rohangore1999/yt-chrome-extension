@@ -136,9 +136,16 @@ const closePopup = () => {
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "ping") {
-    // Respond to ping to confirm content script is present
-    sendResponse({ present: true });
-  } else if (request.action === "togglePopup") {
+    sendResponse({ present: isYouTubeWatchPage() });
+    return;
+  }
+
+  if (!isYouTubeWatchPage()) {
+    sendResponse({ success: false, reason: "Not on YouTube watch page" });
+    return;
+  }
+
+  if (request.action === "togglePopup") {
     togglePopup();
     sendResponse({ success: true });
   } else if (request.action === "closePopup") {
@@ -182,15 +189,29 @@ window.addEventListener("message", (event) => {
   }
 });
 
-// Initial load
-document.addEventListener("DOMContentLoaded", saveVideoId);
-
-// Watch for URL changes
-let lastUrl = location.href;
-new MutationObserver(() => {
-  const url = location.href;
-  if (url !== lastUrl) {
-    lastUrl = url;
-    saveVideoId();
+// Only initialize behaviors on YouTube watch pages
+const isYouTubeWatchPage = () => {
+  try {
+    const url = new URL(window.location.href);
+    return url.hostname.endsWith("youtube.com") && url.pathname === "/watch";
+  } catch (_e) {
+    return false;
   }
-}).observe(document, { subtree: true, childList: true });
+};
+
+if (isYouTubeWatchPage()) {
+  // Initial load
+  document.addEventListener("DOMContentLoaded", saveVideoId);
+
+  // Watch for URL changes
+  let lastUrl = location.href;
+  new MutationObserver(() => {
+    const url = location.href;
+    if (url !== lastUrl) {
+      lastUrl = url;
+      if (isYouTubeWatchPage()) {
+        saveVideoId();
+      }
+    }
+  }).observe(document, { subtree: true, childList: true });
+}
