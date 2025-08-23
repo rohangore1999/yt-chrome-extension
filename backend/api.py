@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import os
 import time
 
+
 # Import utility modules
 from utils import setup_console_encoding
 from youtube_utils import create_youtube_transcript_api, get_transcript_safely
