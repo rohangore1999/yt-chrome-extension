@@ -236,6 +236,10 @@ def query_transcript():
                 "error": "Missing video_id in request body"
             }), 400
 
+        # Get model from request body (default to gemini-flash if not provided)
+        model = data.get('model', 'gemini-flash')
+        print(f"Using model: {model}", flush=True)
+
         user_query = data['query']
         collection_name = video_id
         
@@ -245,11 +249,11 @@ def query_transcript():
         ss_ms = int((time.perf_counter() - ss_start) * 1000)
         print(f"⏱️ Query similarity search took {ss_ms} ms", flush=True)
         
-        # Generate AI response
+        # Generate AI response with the specified model
         ai_start = time.perf_counter()
-        response_data = get_ai_response(user_query, relevant_chunks, api_key)
+        response_data = get_ai_response(user_query, relevant_chunks, api_key, model=model)
         ai_ms = int((time.perf_counter() - ai_start) * 1000)
-        print(f"⏱️ AI response generation took {ai_ms} ms", flush=True)
+        print(f"⏱️ AI response generation took {ai_ms} ms with model {model}", flush=True)
         
         return jsonify({
             "success": True,

@@ -16,6 +16,8 @@ import {
   Sparkles,
   KeyRound,
   X,
+  BrainCog,
+  ChevronDown,
 } from "lucide-react";
 
 // Styles
@@ -27,6 +29,15 @@ import {
   queryTranscript,
   cancelAllRequests,
 } from "../../services/apis";
+
+// Storage
+import {
+  setStorageValue,
+  getStorageValue,
+  STORAGE_KEYS,
+  MODELS,
+  DEFAULT_MODEL,
+} from "../../lib/storage.js";
 
 const Popup = ({ onApiKeyChange }) => {
   const [messages, setMessages] = useState([
@@ -42,6 +53,8 @@ const Popup = ({ onApiKeyChange }) => {
   const [isTranscriptLoading, setIsTranscriptLoading] = useState(false);
   const [videoId, setVideoId] = useState("");
   const [quickQuestions, setQuickQuestions] = useState([]);
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
+  const [openDropdownId, setOpenDropdownId] = useState(null);
 
   const scrollAreaRef = useRef(null);
   const inputRef = useRef(null);
@@ -64,6 +77,7 @@ const Popup = ({ onApiKeyChange }) => {
       text: textToSend,
       isUser: true,
       timestamp: new Date(),
+      model: DEFAULT_MODEL,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -71,7 +85,11 @@ const Popup = ({ onApiKeyChange }) => {
     setIsLoading(true);
 
     try {
-      const response = await queryTranscript(textToSend, videoId);
+      const response = await queryTranscript(
+        textToSend,
+        videoId,
+        DEFAULT_MODEL
+      );
 
       if (response.success) {
         const aiMessage = {
@@ -80,6 +98,7 @@ const Popup = ({ onApiKeyChange }) => {
           isUser: false,
           timestamp: new Date(),
           timestamps: response.timestamps,
+          model: DEFAULT_MODEL,
         };
         setMessages((prev) => [...prev, aiMessage]);
       } else {
@@ -127,6 +146,72 @@ const Popup = ({ onApiKeyChange }) => {
   const handleKeyChange = () => {
     // Call the parent function to handle API key change
     onApiKeyChange();
+  };
+
+  const handleModelChange = async (model, messageId = null) => {
+    setSelectedModel(model);
+    setOpenDropdownId(null);
+    await setStorageValue(STORAGE_KEYS.MODEL, model);
+
+    // If a messageId is provided, append a new user message with the same text
+    // and then append the AI response for the selected model
+    if (messageId) {
+      const targetMessage = messages.find(
+        (msg) => msg.id === messageId && msg.isUser
+      );
+
+      if (!targetMessage) {
+        return;
+      }
+
+      const newUserMessage = {
+        id: Date.now().toString(),
+        text: targetMessage.text,
+        isUser: true,
+        timestamp: new Date(),
+        model,
+      };
+
+      setMessages((prev) => [...prev, newUserMessage]);
+
+      try {
+        setIsLoading(true);
+        const response = await queryTranscript(
+          targetMessage.text,
+          videoId,
+          model
+        );
+
+        if (response.success) {
+          const aiMessage = {
+            id: (Date.now() + 1).toString(),
+            text: response.response,
+            isUser: false,
+            timestamp: new Date(),
+            timestamps: response.timestamps,
+            model,
+          };
+
+          setMessages((prev) => [...prev, aiMessage]);
+        } else {
+          throw new Error(response.error || "Failed to get response");
+        }
+      } catch (error) {
+        if (error.message !== "Request cancelled") {
+          console.error("Error getting response:", error);
+          const errorMessage = {
+            id: (Date.now() + 1).toString(),
+            text: "Sorry, I encountered an error while processing your question. Please try again.",
+            isUser: false,
+            timestamp: new Date(),
+            isError: true,
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    }
   };
 
   const fetchTranscript = async (videoId) => {
@@ -182,12 +267,20 @@ const Popup = ({ onApiKeyChange }) => {
   };
 
   useEffect(() => {
-    chrome.storage.sync.get(["videoId"], (result) => {
-      if (result.videoId) {
-        setVideoId(result.videoId);
-        fetchTranscript(result.videoId);
+    // Load video ID and model preference from storage
+    chrome.storage.sync.get(
+      [STORAGE_KEYS.VIDEO_ID, STORAGE_KEYS.MODEL],
+      (result) => {
+        if (result[STORAGE_KEYS.VIDEO_ID]) {
+          setVideoId(result[STORAGE_KEYS.VIDEO_ID]);
+          fetchTranscript(result[STORAGE_KEYS.VIDEO_ID]);
+        }
+
+        if (result[STORAGE_KEYS.MODEL]) {
+          setSelectedModel(result[STORAGE_KEYS.MODEL]);
+        }
       }
-    });
+    );
 
     const handleStorageChange = (changes, namespace) => {
       if (namespace === "sync" && changes.videoId) {
@@ -290,49 +383,140 @@ const Popup = ({ onApiKeyChange }) => {
           )}
 
           {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`message ${
-                message.isUser ? "user-message" : "bot-message"
-              }`}
-            >
-              {!message.isUser && (
-                <div className="message-avatar bot-avatar">
-                  <Bot className="avatar-icon" />
-                </div>
-              )}
-
+            <>
               <div
-                className={`message-bubble ${
-                  message.isError ? "error-message" : ""
+                key={message.id}
+                className={`message ${
+                  message.isUser ? "user-message" : "bot-message"
                 }`}
               >
-                <div className="message-content">
-                  {message.isUser ? (
-                    message.text
-                  ) : (
-                    <MarkdownResponse
-                      text={message.text}
-                      timestamps={message.timestamps}
-                      videoId={videoId}
-                    />
-                  )}
+                {!message.isUser && (
+                  <div className="message-avatar bot-avatar">
+                    <Bot className="avatar-icon" />
+                  </div>
+                )}
+
+                <div
+                  className={`message-bubble ${
+                    message.isError ? "error-message" : ""
+                  }`}
+                >
+                  <div className="message-content">
+                    {message.isUser ? (
+                      message.text
+                    ) : (
+                      <MarkdownResponse
+                        text={message.text}
+                        timestamps={message.timestamps}
+                        videoId={videoId}
+                      />
+                    )}
+                  </div>
+                  <div className="message-timestamp">
+                    {message.timestamp.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </div>
                 </div>
 
-                <div className="message-timestamp">
-                  {message.timestamp.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </div>
+                {message.isUser && (
+                  <div className="message-avatar user-avatar">
+                    <UserCircle className="avatar-icon" />
+                  </div>
+                )}
               </div>
 
               {message.isUser && (
-                <div className="message-avatar user-avatar">
-                  <UserCircle className="avatar-icon" />
+                <div
+                  className="message-model"
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    alignItems: "center",
+                    gap: "4px",
+                    cursor: "pointer",
+                    marginRight: "8px",
+                    marginTop: "4px",
+                    position: "relative",
+                  }}
+                  onClick={() =>
+                    setOpenDropdownId(
+                      openDropdownId === message.id ? null : message.id
+                    )
+                  }
+                >
+                  <BrainCog size={16} className="model-icon" />
+                  <span style={{ fontSize: "12px", opacity: 0.7 }}>
+                    {message.model === MODELS.GEMINI_FLASH || !message.model
+                      ? "gemini flash"
+                      : "gemini pro"}
+                  </span>
+                  <ChevronDown size={14} style={{ opacity: 0.7 }} />
+                  {openDropdownId === message.id && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: "24px",
+                        right: "0",
+                        background: "var(--background)",
+                        border: "1px solid rgba(255, 0, 0, 0.2)",
+                        borderRadius: "8px",
+                        padding: "4px",
+                        zIndex: 10,
+                        boxShadow:
+                          "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+                        width: "140px",
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div
+                        style={{
+                          padding: "8px 12px",
+                          cursor: "pointer",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          borderRadius: "4px",
+                          backgroundColor:
+                            message.model === MODELS.GEMINI_FLASH ||
+                            !message.model
+                              ? "rgba(255, 0, 0, 0.1)"
+                              : "transparent",
+                        }}
+                        onClick={() =>
+                          handleModelChange(MODELS.GEMINI_FLASH, message.id)
+                        }
+                      >
+                        <span style={{ fontSize: "12px" }}>gemini flash</span>
+                        {(message.model === MODELS.GEMINI_FLASH ||
+                          !message.model) && <span>✓</span>}
+                      </div>
+                      <div
+                        style={{
+                          padding: "8px 12px",
+                          cursor: "pointer",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          borderRadius: "4px",
+                          backgroundColor:
+                            message.model === MODELS.GEMINI_PRO
+                              ? "rgba(255, 0, 0, 0.1)"
+                              : "transparent",
+                        }}
+                        onClick={() =>
+                          handleModelChange(MODELS.GEMINI_PRO, message.id)
+                        }
+                      >
+                        <span style={{ fontSize: "12px" }}>gemini pro</span>
+                        {message.model === MODELS.GEMINI_PRO && <span>✓</span>}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </>
           ))}
 
           {isLoading && (

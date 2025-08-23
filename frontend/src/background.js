@@ -1,7 +1,25 @@
 // Background script to handle extension icon clicks
 // This fires when user clicks the extension icon
+const isYouTubeWatchUrl = (urlString) => {
+  try {
+    const url = new URL(urlString || "");
+    return url.hostname.endsWith("youtube.com") && url.pathname === "/watch";
+  } catch (_e) {
+    return false;
+  }
+};
+
 chrome.action.onClicked.addListener(async (tab) => {
   try {
+    // Only operate on YouTube watch pages
+    if (!isYouTubeWatchUrl(tab?.url)) {
+      console.warn(
+        "Extension action ignored: not a YouTube watch page",
+        tab?.url
+      );
+      return;
+    }
+
     // First, try to send a message to check if content script is already injected
     try {
       await chrome.tabs.sendMessage(tab.id, { action: "ping" });

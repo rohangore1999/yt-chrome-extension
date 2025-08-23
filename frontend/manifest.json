@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Video Assistant - Chat with YouTube Videos",
-  "version": "2.1",
+  "version": "2.3",
   "description": "Transform any YouTube video into an interactive AI conversation.",
   "permissions": ["scripting", "activeTab", "storage"],
 
@@ -11,7 +11,7 @@
 
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["*://*.youtube.com/watch*"],
       "js": ["src/content.js"]
     }
   ],
@@ -26,9 +26,9 @@
   "web_accessible_resources": [
     {
       "resources": ["index.html", "src/*", "assets/*"],
-      "matches": ["<all_urls>"]
+      "matches": ["*://*.youtube.com/*"]
     }
   ],
 
-  "host_permissions": ["<all_urls>"]
+  "host_permissions": ["*://*.youtube.com/*", "http://localhost:8080/*"]
 }

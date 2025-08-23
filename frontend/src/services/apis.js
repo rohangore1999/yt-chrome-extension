@@ -5,7 +5,11 @@ let currentTranscriptController = null;
 let currentQueryController = null;
 
 // Import storage utilities
-import { getStorageValue, STORAGE_KEYS } from "../lib/storage.js";
+import {
+  getStorageValue,
+  STORAGE_KEYS,
+  DEFAULT_MODEL,
+} from "../lib/storage.js";
 
 // Helper function to get API key from Chrome storage
 const getApiKey = () => {
@@ -37,7 +41,8 @@ export const getTranscript = async (videoId) => {
     console.log("Starting new transcript request for video:", videoId);
 
     const response = await fetch(
-      `http://localhost:8080/api/transcript?video_id=${videoId}`,
+      // `http://localhost:8080/api/transcript?video_id=${videoId}`,
+      `https://yt-chrome-extension-production.up.railway.app/api/transcript?video_id=${videoId}`,
       {
         signal: controller.signal,
         headers: {
@@ -86,7 +91,7 @@ export const getTranscript = async (videoId) => {
   }
 };
 
-export const queryTranscript = async (query, videoId) => {
+export const queryTranscript = async (query, videoId, model = null) => {
   try {
     // Cancel any existing query request
     if (currentQueryController) {
@@ -98,6 +103,10 @@ export const queryTranscript = async (query, videoId) => {
     }
 
     const apiKey = await getApiKey();
+
+    // Get the model from storage or use the provided one or default
+    const selectedModel =
+      model || (await getStorageValue(STORAGE_KEYS.MODEL)) || DEFAULT_MODEL;
 
     if (!apiKey) {
       throw new Error("API key not found. Please set your Gemini API key.");
@@ -111,15 +120,23 @@ export const queryTranscript = async (query, videoId) => {
 
     console.log("Starting new query request:", query, "for video:", videoId);
 
-    const response = await fetch("http://localhost:8080/api/query", {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
-      },
-      body: JSON.stringify({ query, video_id: videoId }),
-    });
+    const response = await fetch(
+      // "http://localhost:8080/api/query",
+      "https://yt-chrome-extension-production.up.railway.app/api/query",
+      {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": apiKey,
+        },
+        body: JSON.stringify({
+          query,
+          video_id: videoId,
+          model: selectedModel,
+        }),
+      }
+    );
 
     // Check if request was aborted
     if (controller.signal.aborted) {
